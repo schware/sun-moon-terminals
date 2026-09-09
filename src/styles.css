@@ -53,6 +53,7 @@ h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; align-i
 .conn.open { color: var(--up); }
 .conn.connecting { color: var(--warn); }
 .conn.closed { color: var(--danger); }
+.conn.displaced { color: var(--warn); }
 
 section { margin-bottom: 30px; }
 

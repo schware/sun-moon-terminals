@@ -122,13 +122,25 @@ function Pos({ deviceId, storeId, onForget }:
           <span className="muted">{storeId} · {deviceId}</span>
         </div>
         <span className={`conn ${connection}`}>
-          {connection === 'open' ? '연결됨' : connection === 'connecting' ? '연결 중' : '끊김'}
+          {connection === 'open' ? '연결됨'
+            : connection === 'connecting' ? '연결 중'
+            : connection === 'displaced' ? '중복 장비'
+            : '끊김'}
         </span>
       </header>
 
       {connection === 'closed' && (
         <div className="warn" role="status">
           Device Server와 연결이 끊겼습니다. 재연결을 시도하는 동안 주문은 15초마다 새로 읽습니다.
+        </div>
+      )}
+      {connection === 'displaced' && (
+        <div className="error" role="alert">
+          <strong>{storeId} / {deviceId}</strong> 단말을 다른 창에서 열었습니다.
+          한 단말은 한 연결만 가질 수 있어서 이 창의 연결은 닫혔습니다.
+          같은 매장에서 창을 더 열려면 장비 ID를 다르게 하세요.
+          {' '}
+          <button className="btn link" onClick={onForget}>지금 바꾸기</button>
         </div>
       )}
       {error && <div className="error" role="alert">{error}</div>}
@@ -230,6 +242,8 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
         <p className="muted">
           이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
           기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다.
+          장비 ID는 <strong>매장 안에서만</strong> 구별되면 되므로, 매장이 다르면
+          같은 <code>pos-01</code> 을 써도 됩니다.
         </p>
         <input
           type="text"

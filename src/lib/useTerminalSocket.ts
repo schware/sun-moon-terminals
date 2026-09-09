@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { socketUrl } from './deviceServer'
 
-export type ConnectionState = 'connecting' | 'open' | 'closed'
+export type ConnectionState = 'connecting' | 'open' | 'closed' | 'displaced'
+
+/** The Device Server's close code for "another connection took this device id". */
+const CLOSE_REPLACED = 4001
 
 /**
  * The terminal's connection to the Device Server.
@@ -48,9 +51,18 @@ export function useTerminalSocket(
 
       socket.onmessage = () => handler.current()
 
-      socket.onclose = () => {
-        setState('closed')
+      socket.onclose = (event) => {
         if (closedByUs) return
+
+        // Somebody else claimed this device id. Reconnecting would take it
+        // back, they would take it again, and the two screens would knock
+        // each other offline forever - so this one stops and says so.
+        if (event.code === CLOSE_REPLACED) {
+          setState('displaced')
+          return
+        }
+
+        setState('closed')
         // 1s, 2s, 4s… capped at 16s. A wrong device id is refused at the
         // handshake, so retrying flat out would be a tight loop on a 400.
         attempt = Math.min(attempt + 1, 5)
