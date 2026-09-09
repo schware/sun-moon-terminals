@@ -1,0 +1,143 @@
+/* A shop-floor screen, not a desk one: big touch targets, high contrast,
+   and nothing that needs a second look to read from an arm's length. */
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --panel-2: #0e1118;
+  --border: #22262f;
+  --text: #e6e8eb;
+  --muted: #8a8f99;
+  --accent: #5b8cff;
+  --up: #3ecf8e;
+  --danger: #ff6b6b;
+  --warn: #ffb020;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Noto Sans KR', sans-serif;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+.shell { max-width: 1100px; margin: 0 auto; padding: 20px 18px 40px; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+}
+
+h1 { font-size: 20px; font-weight: 650; margin: 0 0 2px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.count {
+  background: var(--accent); color: #0b0d12;
+  border-radius: 999px; padding: 1px 9px;
+  font-size: 12.5px; font-weight: 700;
+}
+
+/* Connection state is the first thing a shop checks when nothing arrives,
+   so it is always on screen rather than behind a menu. */
+.conn { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.conn::before { content: '● '; }
+.conn.open { color: var(--up); }
+.conn.connecting { color: var(--warn); }
+.conn.closed { color: var(--danger); }
+
+section { margin-bottom: 30px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* A waiting order should catch the eye from across a counter. */
+.cards .card { border-color: rgba(91, 140, 255, 0.35); }
+
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.order-no { font-size: 15px; font-weight: 700; color: var(--accent); }
+.customer { font-size: 15px; margin-bottom: 4px; }
+.amount { font-size: 21px; font-weight: 700; margin-bottom: 14px; }
+
+.row { display: flex; gap: 8px; }
+
+.btn {
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: #1a1e27;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  flex: 1;
+  /* Fingers, not mice. */
+  min-height: 46px;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.accept { background: var(--up); border-color: var(--up); color: #08130d; }
+.btn.reject { background: transparent; border-color: rgba(255, 107, 107, 0.4); color: var(--danger); }
+.btn.accept:hover:not(:disabled) { filter: brightness(1.08); }
+.btn.reject:hover:not(:disabled) { background: rgba(255, 107, 107, 0.1); }
+.btn.link { flex: 0; background: none; border: none; color: var(--muted); font-size: 13px; min-height: 0; padding: 4px 8px; }
+.btn.link:hover { color: var(--text); }
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 34px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 12.5px; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+.status { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.status.accepted { color: var(--up); border-color: rgba(62, 207, 142, 0.35); }
+.status.rejected, .status.expired { color: var(--danger); border-color: rgba(255, 107, 107, 0.3); }
+.status.produced, .status.delivering { color: var(--accent); border-color: rgba(91, 140, 255, 0.3); }
+.status.completed { color: var(--muted); }
+
+.error, .warn {
+  font-size: 13.5px; line-height: 1.5;
+  border-radius: 9px; padding: 11px 13px; margin-bottom: 16px;
+}
+.error { color: var(--danger); background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.25); }
+.warn { color: var(--warn); background: rgba(255, 176, 32, 0.08); border: 1px solid rgba(255, 176, 32, 0.25); }
+
+footer {
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border); padding-top: 14px; margin-top: 10px;
+}
+
+.prompt { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.prompt .card { width: 100%; max-width: 360px; }
+.prompt h1 { margin-bottom: 6px; }
+.prompt p { margin: 0 0 18px; line-height: 1.6; }
+.prompt input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px; color: var(--text);
+  font-size: 16px; font-family: inherit; margin-bottom: 12px;
+}
+.prompt input:focus { outline: none; border-color: var(--accent); }
