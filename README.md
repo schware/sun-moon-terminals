@@ -73,11 +73,15 @@ list** — see the Device Server's `AcceptKnownFormatDirectory`.
   whoever opens the page; it identifies a screen, it does not authenticate
   one.
 
-  That is a deliberate choice while every order in the system is invented
-  for a demo. **It has to change before any real order exists.** The
-  cheapest fix is already scaffolded: the Device Server checks device ids
+  This is acceptable because **every order in this system is a sample by
+  design** — the order channel offers a fixed set of demo orders and has
+  no way to enter a real one. That is a boundary, not an oversight: the
+  platform is built to be shown, and nothing in it belongs to anybody.
+
+  If that ever stops being true, authentication comes first. The cheapest
+  route is already scaffolded — the Device Server checks device ids
   through a `DeviceDirectory` port whose real implementation asks BO,
-  which owns the device list — what is missing is a decision about
+  which owns the device list. What is missing there is a decision about
   service-to-service credentials, not code.
 - Delivery progress is shown as a status column, not as the live tracking
   the flow eventually wants.
