@@ -66,7 +66,18 @@ list** — see the Device Server's `AcceptKnownFormatDirectory`.
 
 ## Not built yet
 
-- **No authentication.** Any browser on the LAN can open this and accept
-  orders. Acceptable only while it is LAN-only.
+- **No authentication, and this is reachable from the internet.** The hub
+  that serves this page is public, and the Device Server it calls is open
+  on 8087, so anyone who finds the URL can list orders — customer ids and
+  amounts included — and press 수락 or 거절. The device id is typed in by
+  whoever opens the page; it identifies a screen, it does not authenticate
+  one.
+
+  That is a deliberate choice while every order in the system is invented
+  for a demo. **It has to change before any real order exists.** The
+  cheapest fix is already scaffolded: the Device Server checks device ids
+  through a `DeviceDirectory` port whose real implementation asks BO,
+  which owns the device list — what is missing is a decision about
+  service-to-service credentials, not code.
 - Delivery progress is shown as a status column, not as the live tracking
   the flow eventually wants.
