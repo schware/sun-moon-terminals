@@ -53,12 +53,24 @@ scp -r dist/* schware@192.168.0.2:~/apps/docker/nginx/html/pos/
 
 No restart — nginx serves that directory from a volume mount.
 
-## Device id
+## Store and device id
 
-Asked for once and kept in `localStorage`; `?deviceId=pos-01` sets it
-without typing. A terminal is a fixed thing in a shop, so baking the id
-into a build per screen would mean rebuilding to move one between
-counters.
+Asked for once **per browser window** and kept in `sessionStorage`.
+
+That is deliberate: `localStorage` is shared across every tab of an
+origin, so a second window would silently become the same terminal as the
+first — and watching two shops side by side is exactly what this is for.
+A tab keeps its identity across a reload and forgets it when closed. The
+last values used are mirrored into `localStorage` only to prefill the
+form, so opening a window for another shop is two edits rather than
+clearing storage.
+
+`?storeId=store-01&deviceId=pos-01` in the URL wins over both, which is
+how a screen bolted to a counter gets pinned without anyone typing.
+
+Both are required. A device id without a store cannot be routed to — the
+Device Server refuses the handshake — and defaulting the store would mean
+guessing which counter an order belongs to.
 
 The id is presented at the WebSocket handshake and the Device Server
 refuses anything malformed. **It is not yet checked against BO's device

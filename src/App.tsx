@@ -10,17 +10,28 @@ import {
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /**
- * A terminal is a fixed thing in a shop, so it is asked for its device id
- * once and then remembers. Baking the id into a build per screen would
- * mean a rebuild to move one between counters.
+ * Which terminal this window is.
+ *
+ * <p>Held in `sessionStorage`, which is **per tab** — that is the whole
+ * point. `localStorage` is shared across every tab of an origin, so a
+ * second window would silently become the same terminal as the first, and
+ * two shops could not be watched side by side. A tab keeps its identity
+ * across a reload and forgets it when closed.
+ *
+ * <p>The last values used are mirrored into `localStorage`, but only to
+ * prefill the form. A new window still asks, so opening one for another
+ * shop is a matter of editing two fields rather than clearing storage.
+ *
+ * <p>`?storeId=&deviceId=` in the URL wins over both, which is how a
+ * screen bolted to a counter gets pinned without anyone typing.
  */
 export default function App() {
   const query = new URLSearchParams(window.location.search)
   const [deviceId, setDeviceId] = useState<string>(
-    () => query.get('deviceId') ?? localStorage.getItem('deviceId') ?? ''
+    () => query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
   )
   const [storeId, setStoreId] = useState<string>(
-    () => query.get('storeId') ?? localStorage.getItem('storeId') ?? ''
+    () => query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
   )
 
   // Both, or neither. A device id without a shop cannot be routed to, so
@@ -29,8 +40,12 @@ export default function App() {
     return (
       <TerminalPrompt
         onChosen={(store, device) => {
-          localStorage.setItem('storeId', store)
-          localStorage.setItem('deviceId', device)
+          sessionStorage.setItem('storeId', store)
+          sessionStorage.setItem('deviceId', device)
+          // Convenience only — the next window prefills from these and
+          // still asks.
+          localStorage.setItem('lastStoreId', store)
+          localStorage.setItem('lastDeviceId', device)
           setStoreId(store)
           setDeviceId(device)
         }}
@@ -43,8 +58,8 @@ export default function App() {
       deviceId={deviceId}
       storeId={storeId}
       onForget={() => {
-        localStorage.removeItem('deviceId')
-        localStorage.removeItem('storeId')
+        sessionStorage.removeItem('deviceId')
+        sessionStorage.removeItem('storeId')
         setDeviceId('')
         setStoreId('')
       }}
@@ -191,15 +206,17 @@ function Pos({ deviceId, storeId, onForget }:
 
       <footer>
         <span className="muted">매장 {storeId} · 장비 {deviceId}</span>
-        <button className="btn link" onClick={onForget}>장비 변경</button>
+        <button className="btn link" onClick={onForget}>매장·장비 변경</button>
       </footer>
     </div>
   )
 }
 
 function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
-  const [store, setStore] = useState('')
-  const [device, setDevice] = useState('')
+  // Prefilled from the last window, not applied automatically — this
+  // screen always asks, so a second window can be a different shop.
+  const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
+  const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
   return (
     <div className="prompt">
       <form
@@ -211,7 +228,8 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
       >
         <h1>단말 등록</h1>
         <p className="muted">
-          이 화면이 속한 매장과 장비 ID를 입력하세요. 한 번만 입력하면 기억합니다.
+          이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
+          기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다.
         </p>
         <input
           type="text"
