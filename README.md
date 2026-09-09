@@ -94,6 +94,10 @@ list** — see the Device Server's `AcceptKnownFormatDirectory`.
   route is already scaffolded — the Device Server checks device ids
   through a `DeviceDirectory` port whose real implementation asks BO,
   which owns the device list. What is missing there is a decision about
-  service-to-service credentials, not code.
+  service-to-service credentials, not code. One direction for this
+  screen specifically: log in with an id/password instead of typing a
+  store and device id, and let the server resolve both from that
+  credential — which would remove the two free-text fields the
+  "단말 등록" prompt asks for today.
 - Delivery progress is shown as a status column, not as the live tracking
   the flow eventually wants.
