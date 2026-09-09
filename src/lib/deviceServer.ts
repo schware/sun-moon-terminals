@@ -24,6 +24,7 @@ export type OrderStatus =
 
 export interface Order {
   id: number
+  storeId: string
   customerId: string
   amount: number
   status: OrderStatus
@@ -79,9 +80,10 @@ export async function changeStatus(
   return (await res.json()) as Order
 }
 
-export function socketUrl(deviceId: string, type: 'POS' | 'KDS' | 'DID'): string {
+export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
   const ws = BASE.replace(/^http/, 'ws')
-  return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}&type=${type}`
+  return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`
+    + `&storeId=${encodeURIComponent(storeId)}&type=${type}`
 }
 
 export function formatAmount(amount: number): string {

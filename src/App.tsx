@@ -15,18 +15,24 @@ import { useTerminalSocket } from './lib/useTerminalSocket'
  * mean a rebuild to move one between counters.
  */
 export default function App() {
+  const query = new URLSearchParams(window.location.search)
   const [deviceId, setDeviceId] = useState<string>(
-    () => new URLSearchParams(window.location.search).get('deviceId')
-      ?? localStorage.getItem('deviceId')
-      ?? ''
+    () => query.get('deviceId') ?? localStorage.getItem('deviceId') ?? ''
+  )
+  const [storeId, setStoreId] = useState<string>(
+    () => query.get('storeId') ?? localStorage.getItem('storeId') ?? ''
   )
 
-  if (!deviceId) {
+  // Both, or neither. A device id without a shop cannot be routed to, so
+  // there is no useful half-configured state to sit in.
+  if (!deviceId || !storeId) {
     return (
-      <DeviceIdPrompt
-        onChosen={(id) => {
-          localStorage.setItem('deviceId', id)
-          setDeviceId(id)
+      <TerminalPrompt
+        onChosen={(store, device) => {
+          localStorage.setItem('storeId', store)
+          localStorage.setItem('deviceId', device)
+          setStoreId(store)
+          setDeviceId(device)
         }}
       />
     )
@@ -35,15 +41,19 @@ export default function App() {
   return (
     <Pos
       deviceId={deviceId}
+      storeId={storeId}
       onForget={() => {
         localStorage.removeItem('deviceId')
+        localStorage.removeItem('storeId')
         setDeviceId('')
+        setStoreId('')
       }}
     />
   )
 }
 
-function Pos({ deviceId, onForget }: { deviceId: string; onForget: () => void }) {
+function Pos({ deviceId, storeId, onForget }:
+  { deviceId: string; storeId: string; onForget: () => void }) {
   const [waiting, setWaiting] = useState<Order[]>([])
   const [recent, setRecent] = useState<Order[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -51,16 +61,19 @@ function Pos({ deviceId, onForget }: { deviceId: string; onForget: () => void })
 
   const reload = useCallback(async () => {
     try {
-      const all = await fetchOrders()
+      // Filtered here rather than at the API, which has no per-store query
+      // yet. It is a screen in one shop, so anything else is not its
+      // business — and showing it would be worse than showing nothing.
+      const all = (await fetchOrders()).filter((o) => o.storeId === storeId)
       setWaiting(all.filter((o) => o.status === 'PLACED'))
       setRecent(all.filter((o) => o.status !== 'PLACED').slice(0, 12))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '주문을 불러오지 못했습니다')
     }
-  }, [])
+  }, [storeId])
 
-  const connection = useTerminalSocket(deviceId, 'POS', reload)
+  const connection = useTerminalSocket(deviceId, storeId, 'POS', reload)
 
   // Polling as well as the socket. A nudge that never arrives must not
   // leave a shop staring at an empty screen while orders pile up — the
@@ -91,7 +104,7 @@ function Pos({ deviceId, onForget }: { deviceId: string; onForget: () => void })
       <header className="bar">
         <div>
           <h1>POS 단말</h1>
-          <span className="muted">{deviceId}</span>
+          <span className="muted">{storeId} · {deviceId}</span>
         </div>
         <span className={`conn ${connection}`}>
           {connection === 'open' ? '연결됨' : connection === 'connecting' ? '연결 중' : '끊김'}
@@ -177,36 +190,43 @@ function Pos({ deviceId, onForget }: { deviceId: string; onForget: () => void })
       </section>
 
       <footer>
-        <span className="muted">장비 {deviceId}</span>
+        <span className="muted">매장 {storeId} · 장비 {deviceId}</span>
         <button className="btn link" onClick={onForget}>장비 변경</button>
       </footer>
     </div>
   )
 }
 
-function DeviceIdPrompt({ onChosen }: { onChosen: (id: string) => void }) {
-  const [value, setValue] = useState('')
+function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
+  const [store, setStore] = useState('')
+  const [device, setDevice] = useState('')
   return (
     <div className="prompt">
       <form
         className="card"
         onSubmit={(e) => {
           e.preventDefault()
-          onChosen(value.trim())
+          onChosen(store.trim(), device.trim())
         }}
       >
         <h1>단말 등록</h1>
         <p className="muted">
-          이 화면이 사용할 장비 ID를 입력하세요. 한 번만 입력하면 기억합니다.
+          이 화면이 속한 매장과 장비 ID를 입력하세요. 한 번만 입력하면 기억합니다.
         </p>
         <input
           type="text"
           autoFocus
-          placeholder="pos-01"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
+          placeholder="매장 ID — store-01"
+          value={store}
+          onChange={(e) => setStore(e.target.value)}
         />
-        <button className="btn accept" type="submit" disabled={!value.trim()}>
+        <input
+          type="text"
+          placeholder="장비 ID — pos-01"
+          value={device}
+          onChange={(e) => setDevice(e.target.value)}
+        />
+        <button className="btn accept" type="submit" disabled={!store.trim() || !device.trim()}>
           시작
         </button>
       </form>

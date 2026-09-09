@@ -18,6 +18,7 @@ export type ConnectionState = 'connecting' | 'open' | 'closed'
  */
 export function useTerminalSocket(
   deviceId: string,
+  storeId: string,
   type: 'POS' | 'KDS' | 'DID',
   onEvent: () => void
 ): ConnectionState {
@@ -35,7 +36,7 @@ export function useTerminalSocket(
 
     const connect = () => {
       setState('connecting')
-      socket = new WebSocket(socketUrl(deviceId, type))
+      socket = new WebSocket(socketUrl(deviceId, storeId, type))
 
       socket.onopen = () => {
         attempt = 0
@@ -64,7 +65,7 @@ export function useTerminalSocket(
       window.clearTimeout(retryTimer)
       socket?.close()
     }
-  }, [deviceId, type])
+  }, [deviceId, storeId, type])
 
   return state
 }
