@@ -51,13 +51,30 @@ VITE_DEVICE_SERVER=http://192.168.0.2:8087 npm run build
 
 ## Deploy
 
-Copy `dist/` to the hub's static directory as `pos/`:
+Copy `dist/` to the hub's static directory as `pos/`. **`scp` does not
+work against this host** — its sshd answers `subsystem request failed` —
+so pipe a tar over plain ssh instead:
 
 ```bash
-scp -r dist/* schware@192.168.0.2:~/apps/docker/nginx/html/pos/
+tar -czf - -C dist . | ssh schware@192.168.0.2 \
+  'rm -rf ~/apps/docker/nginx/html/pos/assets && tar xzf - -C ~/apps/docker/nginx/html/pos'
 ```
 
+Removing `assets/` first keeps old hashed bundles from piling up.
+
 No restart — nginx serves that directory from a volume mount.
+
+**Then load it in a private window to check.** Asset filenames are
+content-hashed, but `index.html` is not, and nginx sends no
+`Cache-Control` for it — so a browser can keep serving the previous
+`index.html` and with it the previous bundle, long after a deploy. On
+2026-09-10 that made a fixed screen look unfixed for half an hour. The
+server side of that is easy to confirm: nginx's access log names the
+exact bundle each browser took.
+
+```bash
+ssh schware@192.168.0.2 "docker logs --tail 40 sun-moon-landing 2>&1 | grep 'GET /pos'"
+```
 
 ## Store and device id
 
