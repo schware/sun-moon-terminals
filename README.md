@@ -34,10 +34,16 @@ npm run build          # → dist/
 
 | Variable | Default |
 |---|---|
-| `VITE_DEVICE_SERVER` | `http://192.168.0.2:8087` |
+| `VITE_DEVICE_SERVER` | `http://211.217.183.232:8087` |
 
 Build-time, not runtime: these are static files with no server of their
-own to ask.
+own to ask. **That makes the default load-bearing** — a build that picks
+up the wrong one still loads, and only fails later with "Device Server와
+연결이 끊겼습니다". The default was the LAN address until 2026-09-10,
+which meant the deployed screen worked from inside the LAN and nowhere
+else.
+
+Use the LAN address only for a build that will be opened on the LAN:
 
 ```bash
 VITE_DEVICE_SERVER=http://192.168.0.2:8087 npm run build

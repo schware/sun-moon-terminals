@@ -11,7 +11,11 @@
  * ask at runtime.
  */
 
-const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://192.168.0.2:8087'
+// The default is the public address on purpose: this screen is opened from
+// the :8000 hub by its public link, and a LAN default silently produced a
+// build that only worked inside the LAN — from outside it loaded fine and
+// then reported the Device Server as unreachable.
+const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
 
 export type OrderStatus =
   | 'PLACED'
