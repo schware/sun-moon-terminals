@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   changeStatus,
+  closeBusinessDay,
   fetchOrders,
   formatAmount,
   formatTime,
+  openBusinessDay,
+  fetchBusinessDayStatus,
   STATUS_LABEL,
+  type BusinessDayStatus,
   type Order
 } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
@@ -74,6 +78,54 @@ function Pos({ deviceId, storeId, onForget }:
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
 
+  const [businessDay, setBusinessDay] = useState<BusinessDayStatus | null>(null)
+  const [businessDayBusy, setBusinessDayBusy] = useState(false)
+  const [businessDayError, setBusinessDayError] = useState<string | null>(null)
+
+  const loadBusinessDay = useCallback(async () => {
+    try {
+      setBusinessDay(await fetchBusinessDayStatus(storeId))
+    } catch (e) {
+      setBusinessDayError(e instanceof Error ? e.message : '영업 상태를 불러오지 못했습니다')
+    }
+  }, [storeId])
+
+  useEffect(() => {
+    void loadBusinessDay()
+    // Business-day state changes rarely — a 30s poll is plenty, and the
+    // socket carries no nudge for it (개점/마감 is this screen's own
+    // action, so it already knows to reload right after pressing either).
+    const timer = window.setInterval(() => void loadBusinessDay(), 30000)
+    return () => window.clearInterval(timer)
+  }, [loadBusinessDay])
+
+  async function openStore() {
+    setBusinessDayBusy(true)
+    setBusinessDayError(null)
+    try {
+      await openBusinessDay(storeId, deviceId)
+    } catch (e) {
+      setBusinessDayError(e instanceof Error ? e.message : '개점하지 못했습니다')
+    } finally {
+      setBusinessDayBusy(false)
+      await loadBusinessDay()
+    }
+  }
+
+  async function closeStore() {
+    if (!window.confirm(`${storeId}을(를) 마감할까요? 오늘 접수된 주문은 그대로 남고, 새 주문만 막힙니다.`)) return
+    setBusinessDayBusy(true)
+    setBusinessDayError(null)
+    try {
+      await closeBusinessDay(storeId, deviceId)
+    } catch (e) {
+      setBusinessDayError(e instanceof Error ? e.message : '마감하지 못했습니다')
+    } finally {
+      setBusinessDayBusy(false)
+      await loadBusinessDay()
+    }
+  }
+
   const reload = useCallback(async () => {
     try {
       // Filtered here rather than at the API, which has no per-store query
@@ -128,6 +180,32 @@ function Pos({ deviceId, storeId, onForget }:
             : '끊김'}
         </span>
       </header>
+
+      <div className="bizday-bar">
+        <span className={businessDay?.open ? 'bizday-open' : 'muted'}>
+          {businessDay === null ? '영업 상태 확인 중…'
+            : businessDay.open ? `영업 중 · 영업일자 ${businessDay.businessDate}`
+            : '영업 준비 — 개점하면 주문을 받을 수 있습니다'}
+        </span>
+        <div className="row">
+          {businessDay && !businessDay.open && (
+            <button className="btn accept" disabled={businessDayBusy} onClick={() => void openStore()}>
+              {businessDayBusy ? '처리 중…' : '개점'}
+            </button>
+          )}
+          {businessDay?.open && (
+            <button className="btn reject" disabled={businessDayBusy} onClick={() => void closeStore()}>
+              {businessDayBusy ? '처리 중…' : '마감'}
+            </button>
+          )}
+        </div>
+      </div>
+      {businessDay?.needsClosing && (
+        <div className="warn" role="status">
+          지난 영업일이 아직 마감되지 않았습니다. 마감 후 다시 개점하면 오늘 날짜로 새로 시작합니다.
+        </div>
+      )}
+      {businessDayError && <div className="error" role="alert">{businessDayError}</div>}
 
       {connection === 'closed' && (
         <div className="warn" role="status">

@@ -84,6 +84,64 @@ export async function changeStatus(
   return (await res.json()) as Order
 }
 
+export interface BusinessDayStatus {
+  storeId: string
+  open: boolean
+  businessDate?: string
+  openedBy?: string
+  needsClosing: boolean
+}
+
+export interface BusinessDay {
+  storeId: string
+  businessDate: string
+  openedAt: string
+  openedBy: string
+  closedAt: string | null
+  closedBy: string | null
+}
+
+export interface OpenResult {
+  day: BusinessDay
+  rolled: boolean
+  closedDate?: string
+  reopened?: boolean
+}
+
+/** Whether this store has 개점'd, and whether its 영업일자 has gone stale (needsClosing). */
+export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessDayStatus> {
+  const res = await fetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as BusinessDayStatus
+}
+
+/**
+ * 개점. If the store was left open on a stale 영업일자, Order closes that
+ * day first and opens today instead — `rolled`/`closedDate` say so. If
+ * today is already open, `reopened` says this resumed a same-day 마감
+ * rather than starting a new day.
+ */
+export async function openBusinessDay(storeId: string, deviceId: string): Promise<OpenResult> {
+  const res = await fetch(`${BASE}/business-days/open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storeId, deviceId })
+  })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as OpenResult
+}
+
+/** 마감. 409 if the store was not open — surfaced via `failure()`'s own error-message handling. */
+export async function closeBusinessDay(storeId: string, deviceId: string): Promise<BusinessDay> {
+  const res = await fetch(`${BASE}/business-days/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ storeId, deviceId })
+  })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as BusinessDay
+}
+
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
   const ws = BASE.replace(/^http/, 'ws')
   return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`

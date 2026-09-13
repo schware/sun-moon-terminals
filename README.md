@@ -1,7 +1,8 @@
 # sun-moon-terminal-pos
 
 The **POS terminal**: shows orders waiting to be accepted, and accepts or
-refuses them.
+refuses them. Also where a store 개점 (opens) and 마감 (closes) for the
+day — see [영업일](#영업일-개점--마감) below.
 
 React + TypeScript, no server of its own — it builds to static files
 served from the `:8000` hub at `/pos/`.
@@ -24,6 +25,27 @@ terminal that was unplugged for a minute come back correct instead of
 showing whatever frames it happened to catch. It also polls every 15
 seconds, so a nudge that never arrives cannot leave a shop staring at an
 empty screen.
+
+## 영업일 (개점 / 마감)
+
+Order stamps every order with the 영업일자 that was open when it arrived,
+and refuses to place one at all for a store that hasn't 개점'd — see the
+Order repo's README and umbrella `docs/adr/0006`. That state has to be
+reachable from *somewhere real*, and this screen is it: the bar under
+the header shows whether the store is open and lets a POS operator press
+개점 or 마감, proxied through the Device Server exactly like everything
+else here (`GET /business-days/status`, `POST /business-days/{open,close}`).
+
+This existed as a backend-only feature for three days before anyone
+noticed no screen could actually reach it — every store on the deploy
+server had only ever been opened by a direct API call, never a button
+press, until this was added 2026-09-13.
+
+**개점 on a day left open from a stale 영업일자** closes that day first
+and starts today fresh (the response says `rolled: true`); **개점 twice
+on the same day** (e.g. after a 마감 pressed by mistake) just resumes
+that day rather than erroring. Neither needs special handling here — the
+screen shows whatever came back and reloads its status either way.
 
 ## Build
 

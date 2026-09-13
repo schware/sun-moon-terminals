@@ -55,6 +55,15 @@ h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; align-i
 .conn.closed { color: var(--danger); }
 .conn.displaced { color: var(--warn); }
 
+.bizday-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 14px; margin-bottom: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.bizday-bar .row { flex: 0; }
+.bizday-bar .btn { flex: 0; min-height: 0; padding: 8px 16px; font-size: 13.5px; }
+.bizday-open { color: var(--up); font-size: 13.5px; font-weight: 600; }
+
 section { margin-bottom: 30px; }
 
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
