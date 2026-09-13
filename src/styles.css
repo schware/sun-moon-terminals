@@ -179,3 +179,15 @@ footer {
   height: 100%; background: var(--up); border-radius: 999px;
   transition: width 0.2s linear;
 }
+
+/* A label naming which of several watched stores a ready order belongs
+   to — only rendered when this screen watches more than one. */
+.ready-store {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 6px;
+}
+
+.prompt p code {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 1px 6px; color: var(--text); font-size: 13px;
+}

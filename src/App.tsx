@@ -60,11 +60,18 @@ function Did({ deviceId, storeId, onForget }:
   const readyRef = useRef(ready)
   readyRef.current = ready
 
+  // A comma-separated storeId is a food-court style board watching
+  // several branches at once — see the Device Server's
+  // TerminalHandshakeHandler, which parses the same string the same way.
+  // A single store is just the length-1 case of this, unchanged.
+  const storeIds = storeId.split(',').map((s) => s.trim()).filter(Boolean)
+  const isMultiStore = storeIds.length > 1
+
   /**
-   * Pulls the store's PRODUCED orders and merges them in. An order already
-   * being shown keeps its original `expiresAt` — re-fetching must not
-   * restart its countdown, or a screen that polls every 15s could show
-   * the same order forever.
+   * Pulls PRODUCED orders across every watched store and merges them in.
+   * An order already being shown keeps its original `expiresAt` —
+   * re-fetching must not restart its countdown, or a screen that polls
+   * every 15s could show the same order forever.
    *
    * <p>PRODUCED is not itself a 15-second state on the server — nothing
    * moves an order past it until the delivery channel exists. The 15s
@@ -76,7 +83,7 @@ function Did({ deviceId, storeId, onForget }:
    */
   const reload = useCallback(async () => {
     try {
-      const produced = (await fetchOrders('PRODUCED')).filter((o) => o.storeId === storeId)
+      const produced = (await fetchOrders('PRODUCED')).filter((o) => storeIds.includes(o.storeId))
       setReady((prev) => {
         const next = new Map<number, ReadyOrder>()
         for (const order of produced) {
@@ -89,6 +96,10 @@ function Did({ deviceId, storeId, onForget }:
     } catch (e) {
       setError(e instanceof Error ? e.message : '주문을 불러오지 못했습니다')
     }
+    // storeIds is derived fresh from storeId every render — depending on
+    // storeId itself (a primitive) instead keeps this stable across
+    // renders the way the array literal would not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId])
 
   const connection = useTerminalSocket(deviceId, storeId, 'DID', reload)
@@ -120,7 +131,9 @@ function Did({ deviceId, storeId, onForget }:
   return (
     <div className="did-shell">
       <header className="did-bar">
-        <span className="muted">{storeId} · {deviceId}</span>
+        <span className="muted">
+          {isMultiStore ? `매장 ${storeIds.length}개 (${storeIds.join(', ')})` : storeId} · {deviceId}
+        </span>
         <span className={`conn ${connection}`}>
           {connection === 'open' ? '연결됨'
             : connection === 'connecting' ? '연결 중'
@@ -136,7 +149,7 @@ function Did({ deviceId, storeId, onForget }:
       ) : (
         <div className="did-grid">
           {cards.map(({ order, expiresAt }) => (
-            <ReadyCard key={order.id} order={order} expiresAt={expiresAt} />
+            <ReadyCard key={order.id} order={order} expiresAt={expiresAt} showStore={isMultiStore} />
           ))}
         </div>
       )}
@@ -151,7 +164,7 @@ function Did({ deviceId, storeId, onForget }:
   )
 }
 
-function ReadyCard({ order, expiresAt }: { order: Order; expiresAt: number }) {
+function ReadyCard({ order, expiresAt, showStore }: { order: Order; expiresAt: number; showStore: boolean }) {
   const [remaining, setRemaining] = useState(() => Math.max(0, expiresAt - Date.now()))
 
   useEffect(() => {
@@ -165,6 +178,7 @@ function ReadyCard({ order, expiresAt }: { order: Order; expiresAt: number }) {
 
   return (
     <article className="ready-card">
+      {showStore && <div className="ready-store">{order.storeId}</div>}
       <div className="ready-no">#{order.id}</div>
       <div className="ready-menu">{order.menuName}</div>
       <div className="ready-bar"><div className="ready-bar-fill" style={{ width: `${fraction * 100}%` }} /></div>
@@ -187,12 +201,14 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
         <h1>단말 등록</h1>
         <p className="muted">
           이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
-          기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다.
+          기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다. 매장 ID를
+          쉼표로 여러 개 적으면(예: <code>store-01,store-02</code>) 이 화면
+          하나가 여러 매장의 준비완료 주문을 함께 보여줍니다.
         </p>
         <input
           type="text"
           autoFocus
-          placeholder="매장 ID — store-01"
+          placeholder="매장 ID — store-01 또는 store-01,store-02"
           value={store}
           onChange={(e) => setStore(e.target.value)}
         />

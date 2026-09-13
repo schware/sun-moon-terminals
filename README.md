@@ -73,6 +73,21 @@ Identical scheme to sun-moon-terminal-pos: per-tab `sessionStorage`, a
 `localStorage` prefill only, `?storeId=&deviceId=` pinning a screen
 mounted on a wall.
 
+## Watching several stores at once (2026-09-13)
+
+`storeId` may be a comma-separated list —
+`?storeId=store-01,store-02&deviceId=did-mall-01` — a food-court style
+board rather than one branch's screen. Each ready card shows which store
+it belongs to once more than one is being watched.
+
+The Device Server's `TerminalHandshakeHandler` parses the same string
+the same way and registers this connection into every one of those
+stores' DID groups, so it receives the push the moment *any* of them has
+a `PRODUCED` order — nothing about the push path changed for this. A
+single store is just the one-element case; POS and KDS still require
+exactly one, since a counter is physically at one store and a list there
+is rejected as a mistake rather than silently truncated.
+
 ## Not built yet
 
 - **Nothing moves an order past PRODUCED.** That is the delivery channel,
