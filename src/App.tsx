@@ -17,6 +17,42 @@ const BUSINESS_DAY_POLL_MS = 30000
  */
 type BusinessDays = Record<string, string | null>
 
+/**
+ * How many already-shown order ids to remember. A wall display runs for
+ * weeks; without a cap this list is the one thing here that grows
+ * forever. Well past a day's orders at this scale, and the oldest to go
+ * are the ones least likely to still be PRODUCED on the server.
+ */
+const SHOWN_LIMIT = 500
+
+const shownKey = (deviceId: string) => `shownOrders:${deviceId}`
+
+function loadShown(deviceId: string): Set<number> {
+  try {
+    const raw = sessionStorage.getItem(shownKey(deviceId))
+    return new Set(raw ? (JSON.parse(raw) as number[]) : [])
+  } catch {
+    // Private windows and cleared site data both land here. Forgetting
+    // costs one replayed card, so it is not worth failing over.
+    return new Set()
+  }
+}
+
+function saveShown(deviceId: string, shown: Set<number>): void {
+  if (shown.size > SHOWN_LIMIT) {
+    // Ids are assigned in order, so the smallest are the oldest.
+    const keep = [...shown].sort((a, b) => a - b).slice(-SHOWN_LIMIT)
+    shown.clear()
+    for (const id of keep) shown.add(id)
+  }
+  try {
+    sessionStorage.setItem(shownKey(deviceId), JSON.stringify([...shown]))
+  } catch {
+    // Same as above — the in-memory set still does the real work, and it
+    // is the one that stops the flicker.
+  }
+}
+
 interface ReadyOrder {
   order: Order
   expiresAt: number
@@ -74,6 +110,25 @@ function Did({ deviceId, storeId, onForget }:
   const readyRef = useRef(ready)
   readyRef.current = ready
 
+  /**
+   * Orders whose 15 seconds are already up. Without this the board
+   * flickers forever: the expiry tick deletes a card, the order is still
+   * PRODUCED on the server (nothing moves it past that yet), the next
+   * poll fetches it again as if it were new, and it gets another 15
+   * seconds — over and over, for the rest of the day.
+   *
+   * A ref rather than state: it must not cause a render of its own, and
+   * `reload` reads it inside the updater below rather than depending on
+   * it.
+   *
+   * Kept in `sessionStorage` so a reloaded board does not replay the
+   * whole day, and per tab like the terminal's own identity — two
+   * windows watching different shops must not share this. Capped,
+   * because a wall display runs for weeks and this set would otherwise
+   * only ever grow.
+   */
+  const shownRef = useRef<Set<number>>(loadShown(deviceId))
+
   // A comma-separated storeId is a food-court style board watching
   // several branches at once — see the Device Server's
   // TerminalHandshakeHandler, which parses the same string the same way.
@@ -91,9 +146,8 @@ function Did({ deviceId, storeId, onForget }:
    * moves an order past it until the delivery channel exists. The 15s
    * window is this screen's own invention: "show it fresh for 15 seconds
    * after *this screen* first saw it," not "for 15 seconds after Order
-   * says so." A screen that reloads after an order has been ready for an
-   * hour will still show it fresh for 15s, because there is nowhere
-   * (yet) to persist "already shown."
+   * says so." Which is why an order that has already had its window is
+   * skipped here rather than re-added — see {@link shownRef}.
    */
   const reload = useCallback(async () => {
     try {
@@ -101,6 +155,9 @@ function Did({ deviceId, storeId, onForget }:
       setReady((prev) => {
         const next = new Map<number, ReadyOrder>()
         for (const order of produced) {
+          if (shownRef.current.has(order.id)) {
+            continue
+          }
           const existing = prev.get(order.id)
           next.set(order.id, existing ?? { order, expiresAt: Date.now() + DISPLAY_MS })
         }
@@ -164,13 +221,20 @@ function Did({ deviceId, storeId, onForget }:
       setReady((prev) => {
         const next = new Map(prev)
         for (const [id, r] of prev) {
-          if (r.expiresAt <= now) next.delete(id)
+          if (r.expiresAt <= now) {
+            next.delete(id)
+            // Recorded as it leaves, not when it arrives: an order that
+            // is still on screen when the tab closes should get its
+            // window again, but one that has had it must never come back.
+            shownRef.current.add(id)
+          }
         }
+        saveShown(deviceId, shownRef.current)
         return next
       })
     }, 500)
     return () => window.clearInterval(timer)
-  }, [])
+  }, [deviceId])
 
   /**
    * 판매일자 scoping, added 2026-09-15.
