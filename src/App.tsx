@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchOrders, type Order } from './lib/deviceServer'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 const DISPLAY_MS = 15000
+
+/** How often to re-ask each watched store which 판매일자 it is on. */
+const BUSINESS_DAY_POLL_MS = 30000
+
+/**
+ * The 판매일자 each watched store is currently on — `null` for a store
+ * that is closed, and absent for one not yet asked about.
+ *
+ * Per store rather than one value for the board, because a food-court
+ * DID watches several branches and they do not open and close together.
+ * One shop's 마감 must clear only its own cards.
+ */
+type BusinessDays = Record<string, string | null>
 
 interface ReadyOrder {
   order: Order
@@ -54,6 +67,7 @@ export default function App() {
 function Did({ deviceId, storeId, onForget }:
   { deviceId: string; storeId: string; onForget: () => void }) {
   const [ready, setReady] = useState<Map<number, ReadyOrder>>(new Map())
+  const [days, setDays] = useState<BusinessDays>({})
   const [error, setError] = useState<string | null>(null)
   // Read inside the setState updater below, not as a dependency — this
   // must not itself trigger a reload.
@@ -102,12 +116,44 @@ function Did({ deviceId, storeId, onForget }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeId])
 
+  /**
+   * Asks every watched store which 판매일자 it is on. Failures leave the
+   * previous answer in place rather than recording "closed" — a status
+   * call that did not come back is not evidence a shop shut, and treating
+   * it as one would blank a working board mid-service.
+   */
+  const reloadBusinessDays = useCallback(async () => {
+    const answers = await Promise.all(storeIds.map(async (id) => {
+      try {
+        const status = await fetchBusinessDayStatus(id)
+        return [id, status.open ? status.businessDate ?? null : null] as const
+      } catch {
+        return null
+      }
+    }))
+    setDays((prev) => {
+      const next = { ...prev }
+      for (const answer of answers) {
+        if (answer) next[answer[0]] = answer[1]
+      }
+      return next
+    })
+    // Same reasoning as reload's own dependency list below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId])
+
   const connection = useTerminalSocket(deviceId, storeId, 'DID', reload)
 
   useEffect(() => {
     const timer = window.setInterval(() => void reload(), 15000)
     return () => window.clearInterval(timer)
   }, [reload])
+
+  useEffect(() => {
+    void reloadBusinessDays()
+    const timer = window.setInterval(() => void reloadBusinessDays(), BUSINESS_DAY_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [reloadBusinessDays])
 
   // A separate, faster tick just to expire cards — reload() only adds and
   // refreshes, it never removes on a timer of its own.
@@ -126,13 +172,38 @@ function Did({ deviceId, storeId, onForget }:
     return () => window.clearInterval(timer)
   }, [])
 
-  const cards = [...ready.values()].sort((a, b) => a.order.id - b.order.id)
+  /**
+   * 판매일자 scoping, added 2026-09-15.
+   *
+   * Filtered here rather than in `reload`, so that a 개점 or 마감 clears
+   * the board on the next render instead of waiting for the next fetch —
+   * and so there is no separate "reset" step to remember to run. A card
+   * whose store has since rolled its 판매일자 simply stops matching.
+   *
+   * A store not yet asked about (`undefined`) shows nothing rather than
+   * everything: the first paint after a reload should not flash
+   * yesterday's orders for the half second before the status call lands.
+   */
+  const cards = useMemo(
+    () => [...ready.values()]
+      .filter(({ order }) => order.businessDate != null
+        && days[order.storeId] === order.businessDate)
+      .sort((a, b) => a.order.id - b.order.id),
+    [ready, days]
+  )
+
+  /** Shops this board watches that are not trading right now. */
+  const closedStores = storeIds.filter((id) => days[id] === null)
 
   return (
     <div className="did-shell">
       <header className="did-bar">
         <span className="muted">
           {isMultiStore ? `매장 ${storeIds.length}개 (${storeIds.join(', ')})` : storeId} · {deviceId}
+          {!isMultiStore && (
+            days[storeId] ? ` · 판매일자 ${days[storeId]}` : ' · 판매일자 없음'
+          )}
+          {isMultiStore && closedStores.length > 0 && ` · 마감 ${closedStores.join(', ')}`}
         </span>
         <span className={`conn ${connection}`}>
           {connection === 'open' ? '연결됨'
@@ -145,7 +216,11 @@ function Did({ deviceId, storeId, onForget }:
       {error && <div className="error" role="alert">{error}</div>}
 
       {cards.length === 0 ? (
-        <div className="did-empty">준비된 주문을 기다리는 중…</div>
+        <div className="did-empty">
+          {closedStores.length === storeIds.length
+            ? (isMultiStore ? '지켜보는 매장이 모두 마감 상태입니다.' : '매장이 개점 전이거나 마감되었습니다.')
+            : '준비된 주문을 기다리는 중…'}
+        </div>
       ) : (
         <div className="did-grid">
           {cards.map(({ order, expiresAt }) => (

@@ -33,8 +33,34 @@ export interface Order {
   amount: number
   status: OrderStatus
   acceptedBy: string | null
+  /**
+   * 판매일자 — the 영업일자 that was open when the order arrived, not the
+   * calendar date of `placedAt`: a shop trading past midnight is still on
+   * the same business day. Null only for orders placed before 영업일
+   * existed at all.
+   */
+  businessDate: string | null
   placedAt: string
   updatedAt: string
+}
+
+/** Whether a store has 개점'd, and which 판매일자 it is on. */
+export interface BusinessDayStatus {
+  storeId: string
+  open: boolean
+  businessDate?: string
+  openedBy?: string
+  needsClosing: boolean
+}
+
+/**
+ * Asked per store, because this board can watch several at once and each
+ * one keeps its own 영업일자 — a food court does not close as a unit.
+ */
+export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessDayStatus> {
+  const res = await fetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as BusinessDayStatus
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
