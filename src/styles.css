@@ -172,6 +172,7 @@ footer {
 }
 
 .ready-no { font-size: 56px; font-weight: 800; color: var(--up); line-height: 1; margin-bottom: 10px; }
+.ready-sub { font-size: 14px; color: var(--muted); margin: -6px 0 8px; }
 .ready-menu { font-size: 22px; font-weight: 600; margin-bottom: 18px; }
 
 .ready-bar { height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }

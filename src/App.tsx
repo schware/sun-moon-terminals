@@ -318,7 +318,12 @@ function ReadyCard({ order, expiresAt, showStore }: { order: Order; expiresAt: n
   return (
     <article className="ready-card">
       {showStore && <div className="ready-store">{order.storeId}</div>}
-      <div className="ready-no">#{order.id}</div>
+      {/* 수령번호가 주인공입니다 — 손님은 이걸 보고 옵니다. 주문번호는
+          내부 값이라, 수령번호가 있으면 작게 밀어둡니다. 없는 옛 주문은
+          예전처럼 주문번호가 그 자리를 맡습니다: 빈 칸을 남기면
+          누락처럼 읽힙니다. */}
+      <div className="ready-no">{order.pickupNo ?? `#${order.id}`}</div>
+      {order.pickupNo && <div className="ready-sub">주문 #{order.id}</div>}
       <div className="ready-menu">{order.menuName}</div>
       <div className="ready-bar"><div className="ready-bar-fill" style={{ width: `${fraction * 100}%` }} /></div>
     </article>
