@@ -16,6 +16,7 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
+import { nextTranNo } from './lib/tranNo'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /**
@@ -91,6 +92,10 @@ function Pos({ deviceId, storeId, onForget }:
   // 깨우고, 그때 다시 읽습니다 — 프레임의 내용을 믿지는 않습니다.
   const [menus, setMenus] = useState<MenuBoardItem[]>([])
   const [menuError, setMenuError] = useState<string | null>(null)
+
+  // 방금 수락한 주문의 영수증. 수락 직후 한 번 뜨고, 닫으면 사라집니다
+  // — 다시 필요하면 최근 주문에서 다시 엽니다.
+  const [receipt, setReceipt] = useState<Order | null>(null)
 
   const loadBusinessDay = useCallback(async () => {
     try {
@@ -200,7 +205,14 @@ function Pos({ deviceId, storeId, onForget }:
     setBusyId(order.id)
     setError(null)
     try {
-      await changeStatus(order.id, next, deviceId)
+      // 거래번호는 수락할 때 이 단말이 끊습니다 (umbrella docs/adr/0009).
+      // 거절에는 붙이지 않습니다 — 거절은 매출이 아니고, 번호를 태우면
+      // 영수증 번호가 구멍 난 채로 이어집니다.
+      const tranNo = next === 'ACCEPTED' && businessDay?.businessDate
+        ? nextTranNo(storeId, deviceId, businessDay.businessDate)
+        : undefined
+      const moved = await changeStatus(order.id, next, deviceId, tranNo)
+      if (next === 'ACCEPTED') setReceipt(moved)
     } catch (e) {
       // Usually a 409: it expired, or another terminal took it first.
       // Either way this screen is now out of date, so refresh rather
@@ -327,14 +339,14 @@ function Pos({ deviceId, storeId, onForget }:
             <table>
               <thead>
                 <tr>
-                  <th>수령번호</th><th>고객</th><th>금액</th><th>상태</th><th>변경</th>
+                  <th>수령번호</th><th>거래번호</th><th>금액</th><th>상태</th><th>변경</th><th />
                 </tr>
               </thead>
               <tbody>
                 {recent.map((order) => (
                   <tr key={order.id}>
                     <td className="muted">{order.pickupNo ?? `#${order.id}`}</td>
-                    <td>{order.customerId}</td>
+                    <td className="muted">{order.tranNo ?? ''}</td>
                     <td>{formatAmount(order.amount)}</td>
                     <td>
                       <span className={`status ${order.status.toLowerCase()}`}>
@@ -342,6 +354,13 @@ function Pos({ deviceId, storeId, onForget }:
                       </span>
                     </td>
                     <td className="muted">{formatTime(order.updatedAt)}</td>
+                    <td>
+                      {/* 거래번호가 붙은 주문만 영수증이 있습니다 —
+                          거절·미응답은 매출이 아닙니다. */}
+                      {order.tranNo && (
+                        <button className="btn link" onClick={() => setReceipt(order)}>영수증</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -378,10 +397,60 @@ function Pos({ deviceId, storeId, onForget }:
         </p>
       </section>
 
+      {receipt && (
+        <Receipt order={receipt} deviceId={deviceId} onClose={() => setReceipt(null)} />
+      )}
+
       <footer>
         <span className="muted">매장 {storeId} · 장비 {deviceId}</span>
         <button className="btn link" onClick={onForget}>매장·장비 변경</button>
       </footer>
+    </div>
+  )
+}
+
+/**
+ * 영수증.
+ *
+ * <p>싣는 값은 매출 키 그대로입니다 — <b>매장코드 + 판매일자 + POS번호 +
+ * 거래번호</b> (umbrella docs/adr/0009). 주문번호(#12)는 OMS의 내부
+ * 일련번호라 작게 둡니다: 손님이 매장에 전화해서 부를 값이 아닙니다.
+ *
+ * <p>QR 번호는 <b>추가로</b> 붙습니다. 키의 자리가 아니라, "어느 자리의
+ * 스티커로 들어온 주문인가"를 되짚는 값입니다.
+ *
+ * <p>브라우저 인쇄를 씁니다. 이 단말에는 아직 프린터 드라이버가 없고,
+ * 있어야 할 자리(POS 로컬)가 정해지면 그때 옮깁니다 — 지금 여기서
+ * 흉내내면 두 번 만들게 됩니다.
+ */
+function Receipt({ order, deviceId, onClose }:
+  { order: Order; deviceId: string; onClose: () => void }) {
+  return (
+    <div className="sheet-backdrop" role="dialog" aria-modal="true">
+      <div className="sheet receipt">
+        <div className="receipt-paper">
+          <h3>영수증</h3>
+          <dl>
+            <dt>매장코드</dt><dd>{order.storeId}</dd>
+            <dt>판매일자</dt><dd>{order.businessDate ?? '—'}</dd>
+            <dt>POS번호</dt><dd>{order.acceptedBy ?? deviceId}</dd>
+            <dt>거래번호</dt><dd className="strong">{order.tranNo ?? '—'}</dd>
+          </dl>
+          <hr />
+          <dl>
+            <dt>메뉴</dt><dd>{order.menuName}</dd>
+            <dt>금액</dt><dd className="strong">{formatAmount(order.amount)}</dd>
+            {tableLabel(order) && <><dt>자리</dt><dd>{tableLabel(order)}</dd></>}
+            {order.pickupNo && <><dt>수령번호</dt><dd className="strong">{order.pickupNo}</dd></>}
+            {order.qrCode && <><dt>QR번호</dt><dd className="mono">{order.qrCode}</dd></>}
+          </dl>
+          <p className="receipt-foot">주문 #{order.id} · {formatTime(order.placedAt)}</p>
+        </div>
+        <div className="row no-print">
+          <button className="btn accept" onClick={() => window.print()}>인쇄</button>
+          <button className="btn" onClick={onClose}>닫기</button>
+        </div>
+      </div>
     </div>
   )
 }

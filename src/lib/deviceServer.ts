@@ -30,9 +30,17 @@ export interface Order {
   id: number
   storeId: string
   customerId: string
+  /** 영수증에 찍히는 품목. 티켓은 고객 id로 충분했지만 영수증은 아닙니다. */
+  menuName: string
   amount: number
   status: OrderStatus
   acceptedBy: string | null
+  /**
+   * 판매일자 — 매출 키의 한 자리이고, 영수증에 그대로 찍힙니다.
+   * placedAt 의 달력 날짜가 아닙니다: 자정을 넘겨 장사한 주문도
+   * 그날 영업일에 속합니다.
+   */
+  businessDate: string | null
   /**
    * 도착지 — "이 메뉴를 저 자리로". 테이블 QR로 들어온 주문에만 있고,
    * 매장 선택 화면이나 (앞으로의) 포장·배달 주문은 null입니다.
@@ -57,6 +65,15 @@ export interface Order {
    */
   pickupNo: string | null
   pickupPin: string | null
+  /**
+   * 거래번호 — 매출 키의 마지막 자리
+   * (판매일자 + 점포코드 + POS번호 + 거래번호).
+   * **이 단말이 채번합니다** — 수락할 때 붙고, 그 전에는 null입니다.
+   * 아직 거래가 아니기 때문입니다.
+   */
+  tranNo: string | null
+  /** 이 주문이 들어온 테이블 QR의 코드. 키의 일부가 아니라 영수증에 함께 찍히는 값입니다. */
+  qrCode: string | null
   placedAt: string
   updatedAt: string
 }
@@ -105,10 +122,14 @@ export async function fetchOrders(status?: OrderStatus): Promise<Order[]> {
 export async function changeStatus(
   orderId: number,
   status: OrderStatus,
-  deviceId?: string
+  deviceId?: string,
+  tranNo?: string
 ): Promise<Order> {
   const params = new URLSearchParams({ id: String(orderId), status })
   if (deviceId) params.set('deviceId', deviceId)
+  // 수락할 때만 실립니다. 뒤의 전이에서 보내도 서버가 무시합니다 —
+  // 매출의 키가 조리·배달 과정에서 움직이면 그건 더 이상 키가 아닙니다.
+  if (tranNo) params.set('tranNo', tranNo)
 
   const res = await fetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
