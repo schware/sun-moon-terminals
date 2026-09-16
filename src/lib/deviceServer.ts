@@ -110,6 +110,66 @@ export async function changeStatus(
   return (await res.json()) as Order
 }
 
+/**
+ * 소켓으로 오는 프레임. 지금 두 종류입니다.
+ *
+ * 주문 이벤트는 `orderId`를 들고 오고, 기준 정보 이벤트는 `type`이
+ * `MENU_`로 시작합니다. 둘 다 **바뀌었다는 신호일 뿐**이고 화면이 믿는
+ * 값이 아닙니다 — 무엇이 참인지는 다시 물어봅니다.
+ */
+export interface TerminalEvent {
+  orderId?: number
+  status?: string
+  storeId?: string
+  /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' — 주문 이벤트에는 없습니다. */
+  type?: string
+  menuCode?: string
+  businessDate?: string
+}
+
+/** 이 프레임이 기준 정보(결품) 알림인가. 아니면 주문 쪽입니다. */
+export function isMenuEvent(event?: TerminalEvent): boolean {
+  return typeof event?.type === 'string' && event.type.startsWith('MENU_')
+}
+
+/**
+ * 단말의 로컬 마스터 한 줄 — 오늘 이 매장이 파는 것과, 떨어진 것.
+ *
+ * `soldOut`은 "오늘 없다"이지 메뉴를 내린 것이 아닙니다. 내린 메뉴는
+ * 애초에 목록에 없습니다.
+ *
+ * `estimatedMinutes`는 기준 조리시간 x (대기열 + 1)이고, 모르면
+ * null입니다 — 0으로 읽으면 안 됩니다.
+ */
+export interface MenuBoardItem {
+  menuCode: string
+  name: string
+  imageUrl: string | null
+  description: string | null
+  kdsDeviceId: string | null
+  price: number | null
+  soldOut: boolean
+  orderable: boolean
+  cookMinutes: number | null
+  estimatedMinutes: number | null
+}
+
+export interface MenuBoard {
+  storeId: string
+  businessDate: string
+  menus: MenuBoardItem[]
+}
+
+/**
+ * 오늘의 메뉴판. Device Server가 APP-SERVER에 물어봐 줍니다 — 단말은
+ * 주소를 하나만 압니다.
+ */
+export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
+  const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as MenuBoard
+}
+
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
   const ws = BASE.replace(/^http/, 'ws')
   return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`
