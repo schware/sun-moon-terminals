@@ -288,7 +288,9 @@ function Pos({ deviceId, storeId, onForget }:
             {waiting.map((order) => (
               <article className="card" key={order.id}>
                 <div className="card-head">
-                  <span className="order-no">#{order.id}</span>
+                  {/* 수령번호가 카운터와 손님이 공유하는 말입니다. 주문번호는
+                      내부 값이라, 수령번호가 있으면 그쪽을 앞에 둡니다. */}
+                  <span className="order-no">{order.pickupNo ?? `#${order.id}`}</span>
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.placedAt)}</span>
                 </div>
@@ -325,13 +327,13 @@ function Pos({ deviceId, storeId, onForget }:
             <table>
               <thead>
                 <tr>
-                  <th>번호</th><th>고객</th><th>금액</th><th>상태</th><th>변경</th>
+                  <th>수령번호</th><th>고객</th><th>금액</th><th>상태</th><th>변경</th>
                 </tr>
               </thead>
               <tbody>
                 {recent.map((order) => (
                   <tr key={order.id}>
-                    <td className="muted">#{order.id}</td>
+                    <td className="muted">{order.pickupNo ?? `#${order.id}`}</td>
                     <td>{order.customerId}</td>
                     <td>{formatAmount(order.amount)}</td>
                     <td>
