@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   changeStatus,
   fetchBusinessDayStatus,
+  fetchMenuBoard,
   fetchOrders,
   formatAmount,
   formatTime,
+  isMenuEvent,
   STATUS_LABEL,
   type BusinessDayStatus,
+  type MenuBoardItem,
   type Order,
+  type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
@@ -66,6 +70,11 @@ function Kds({ deviceId, storeId, onForget }:
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
 
+  // 주방이 결품을 알아야 하는 이유는 주문을 막기 위해서가 아닙니다 —
+  // 그건 손님 화면에서 이미 막힙니다. 이미 들어와 있는 티켓 중에 그
+  // 메뉴가 있으면 지금 카운터에 말해야 하기 때문입니다.
+  const [soldOut, setSoldOut] = useState<MenuBoardItem[]>([])
+
   const reload = useCallback(async () => {
     try {
       // Filtered here rather than at the API, which has no per-store query
@@ -87,7 +96,28 @@ function Kds({ deviceId, storeId, onForget }:
     }
   }, [storeId])
 
-  const connection = useTerminalSocket(deviceId, storeId, 'KDS', reload)
+  const loadMenus = useCallback(async () => {
+    try {
+      setSoldOut((await fetchMenuBoard(storeId)).menus.filter((m) => m.soldOut))
+    } catch {
+      // 메뉴판을 못 읽는 것은 주방을 세울 이유가 아닙니다. 결품 띠만
+      // 안 보이고 티켓은 그대로 흐릅니다.
+    }
+  }, [storeId])
+
+  // 프레임 하나에 두 가지가 옵니다 — 결품이면 메뉴판만, 그 밖이면
+  // 주문만 다시 읽습니다. 못 읽은 프레임이면 둘 다입니다.
+  const onEvent = useCallback((event?: TerminalEvent) => {
+    if (event === undefined) {
+      void reload()
+      void loadMenus()
+      return
+    }
+    if (isMenuEvent(event)) void loadMenus()
+    else void reload()
+  }, [reload, loadMenus])
+
+  const connection = useTerminalSocket(deviceId, storeId, 'KDS', onEvent)
 
   // Polling as well as the socket — a nudge that never arrives must not
   // leave a kitchen staring at an empty screen while tickets pile up.
@@ -101,6 +131,13 @@ function Kds({ deviceId, storeId, onForget }:
     const timer = window.setInterval(() => void reloadBusinessDay(), BUSINESS_DAY_POLL_MS)
     return () => window.clearInterval(timer)
   }, [reloadBusinessDay])
+
+  // 소켓이 즉시 알려주므로 이 폴링은 안전망입니다 — 영업일 확인과 같은 간격.
+  useEffect(() => {
+    void loadMenus()
+    const timer = window.setInterval(() => void loadMenus(), BUSINESS_DAY_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [loadMenus])
 
   /**
    * 판매일자 scoping, added 2026-09-15.
@@ -201,6 +238,12 @@ function Kds({ deviceId, storeId, onForget }:
         <div className="warn" role="status">
           판매일자 <strong>{businessDay.businessDate}</strong>가 아직 열려 있습니다.
           POS에서 마감하면 이 화면도 새 판매일자로 넘어갑니다.
+        </div>
+      )}
+      {soldOut.length > 0 && (
+        <div className="warn" role="status">
+          오늘 <strong>결품 {soldOut.length}개</strong> — {soldOut.map((m) => m.name).join(', ')}.
+          새 주문은 이미 막혀 있습니다. 이미 받은 티켓에 있으면 카운터에 알려주세요.
         </div>
       )}
       {error && <div className="error" role="alert">{error}</div>}

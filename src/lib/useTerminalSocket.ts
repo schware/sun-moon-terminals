@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { socketUrl } from './deviceServer'
+import { socketUrl, type TerminalEvent } from './deviceServer'
 
 export type ConnectionState = 'connecting' | 'open' | 'closed' | 'displaced'
 
@@ -15,6 +15,12 @@ const CLOSE_REPLACED = 4001
  * frames it happened to catch, and reconnecting has to converge on the
  * truth rather than on the backlog.
  *
+ * <p>The frame is parsed and handed over all the same, because there is
+ * now more than one kind: an order changed (`order-events`) and the menu
+ * master changed (`menu-events`, 결품). The caller uses it only to pick
+ * *which* list to re-read — never as the new value. `undefined` means
+ * "re-read everything", which is what a fresh connection warrants.
+ *
  * <p>Reconnects with a backoff, because a screen in a shop that gives up
  * after one dropped connection is a screen someone has to walk over and
  * restart.
@@ -23,7 +29,7 @@ export function useTerminalSocket(
   deviceId: string,
   storeId: string,
   type: 'POS' | 'KDS' | 'DID',
-  onEvent: () => void
+  onEvent: (event?: TerminalEvent) => void
 ): ConnectionState {
   const [state, setState] = useState<ConnectionState>('connecting')
   // In a ref so a re-render with a fresh closure does not tear down the
@@ -49,7 +55,18 @@ export function useTerminalSocket(
         handler.current()
       }
 
-      socket.onmessage = () => handler.current()
+      socket.onmessage = (message) => {
+        // A frame this terminal cannot parse is still a reason to look:
+        // something changed upstream, and re-reading everything is the
+        // safe reading of "I don't know what".
+        let parsed: TerminalEvent | undefined
+        try {
+          parsed = JSON.parse(String(message.data)) as TerminalEvent
+        } catch {
+          parsed = undefined
+        }
+        handler.current(parsed)
+      }
 
       socket.onclose = (event) => {
         if (closedByUs) return
