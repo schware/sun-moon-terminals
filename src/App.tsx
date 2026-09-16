@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   changeStatus,
   closeBusinessDay,
@@ -79,8 +79,7 @@ export default function App() {
 
 function Pos({ deviceId, storeId, onForget }:
   { deviceId: string; storeId: string; onForget: () => void }) {
-  const [waiting, setWaiting] = useState<Order[]>([])
-  const [recent, setRecent] = useState<Order[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<number | null>(null)
 
@@ -157,9 +156,9 @@ function Pos({ deviceId, storeId, onForget }:
       // Filtered here rather than at the API, which has no per-store query
       // yet. It is a screen in one shop, so anything else is not its
       // business — and showing it would be worse than showing nothing.
-      const all = (await fetchOrders()).filter((o) => o.storeId === storeId)
-      setWaiting(all.filter((o) => o.status === 'PLACED'))
-      setRecent(all.filter((o) => o.status !== 'PLACED').slice(0, 12))
+      //
+      // 판매일자로 거르는 일은 여기서 하지 않습니다 — 아래에서 파생시킵니다.
+      setOrders((await fetchOrders()).filter((o) => o.storeId === storeId))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '주문을 불러오지 못했습니다')
@@ -196,6 +195,37 @@ function Pos({ deviceId, storeId, onForget }:
     const timer = window.setInterval(() => void loadMenus(), 30000)
     return () => window.clearInterval(timer)
   }, [loadMenus])
+
+  /**
+   * 판매일자 scoping — KDS·DID와 같은 규칙입니다.
+   *
+   * 화면에는 이 매장이 지금 올라타 있는 판매일자의 주문만 둡니다. 그게
+   * 개점이 화면을 비우는 방식입니다: 어젯밤에 안 끝난 주문은 어제
+   * 판매일자에 속하고, 오늘 아침 카운터의 일이 아닙니다.
+   *
+   * 다시 읽는 것이 아니라 파생시킵니다. 그래야 "초기화"라는 절차가 없고,
+   * 따라서 잊을 절차도 없습니다 — 30초마다 확인하는 판매일자가 바뀌면
+   * 다음 렌더에서 목록이 저절로 다시 걸립니다.
+   *
+   * 마감한 매장은 열린 판매일자가 없으므로 오늘에 속하는 주문도 없습니다.
+   * 목록이 비고, 그 이유는 위의 영업 바가 이미 말하고 있습니다. 지나간
+   * 날의 주문을 보는 곳은 BO의 매출 조회입니다.
+   */
+  const today = businessDay?.open ? businessDay.businessDate ?? null : null
+  const inToday = useCallback(
+    (order: Order) => today !== null && order.businessDate === today,
+    [today]
+  )
+
+  const waiting = useMemo(
+    () => orders.filter((o) => inToday(o) && o.status === 'PLACED'),
+    [orders, inToday]
+  )
+
+  const recent = useMemo(
+    () => orders.filter((o) => inToday(o) && o.status !== 'PLACED').slice(0, 12),
+    [orders, inToday]
+  )
 
   // 결품만 따로 뽑아 위에 한 줄로 띄웁니다. 주문을 받는 사람이 제일
   // 먼저 알아야 하는 것이 "오늘 없는 것"이라서요.
@@ -294,7 +324,9 @@ function Pos({ deviceId, storeId, onForget }:
           {waiting.length > 0 && <span className="count">{waiting.length}</span>}
         </h2>
         {waiting.length === 0 ? (
-          <div className="empty">대기 중인 주문이 없습니다.</div>
+          <div className="empty">
+            {today === null ? '개점된 판매일자가 없습니다.' : '대기 중인 주문이 없습니다.'}
+          </div>
         ) : (
           <div className="cards">
             {waiting.map((order) => (
@@ -331,9 +363,17 @@ function Pos({ deviceId, storeId, onForget }:
       </section>
 
       <section>
-        <h2>최근 주문</h2>
+        {/* 오늘치만 둡니다. 어제 주문이 섞이면 "지금 무슨 일이
+            있었나"를 읽을 수가 없고, 지나간 날을 보는 곳은 BO의
+            매출 조회입니다. */}
+        <h2>
+          오늘 주문
+          {today && <span className="muted">판매일자 {today}</span>}
+        </h2>
         {recent.length === 0 ? (
-          <div className="empty">아직 처리된 주문이 없습니다.</div>
+          <div className="empty">
+            {today === null ? '개점된 판매일자가 없습니다.' : '오늘 처리된 주문이 없습니다.'}
+          </div>
         ) : (
           <div className="table-wrap">
             <table>
