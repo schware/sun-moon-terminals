@@ -2,14 +2,18 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   changeStatus,
   closeBusinessDay,
+  fetchMenuBoard,
   fetchOrders,
   formatAmount,
   formatTime,
+  isMenuEvent,
   openBusinessDay,
   fetchBusinessDayStatus,
   STATUS_LABEL,
   type BusinessDayStatus,
+  type MenuBoardItem,
   type Order,
+  type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
@@ -83,6 +87,11 @@ function Pos({ deviceId, storeId, onForget }:
   const [businessDayBusy, setBusinessDayBusy] = useState(false)
   const [businessDayError, setBusinessDayError] = useState<string | null>(null)
 
+  // 단말의 로컬 마스터. BO에서 결품을 걸면 menu-events 가 이 화면을
+  // 깨우고, 그때 다시 읽습니다 — 프레임의 내용을 믿지는 않습니다.
+  const [menus, setMenus] = useState<MenuBoardItem[]>([])
+  const [menuError, setMenuError] = useState<string | null>(null)
+
   const loadBusinessDay = useCallback(async () => {
     try {
       setBusinessDay(await fetchBusinessDayStatus(storeId))
@@ -127,6 +136,17 @@ function Pos({ deviceId, storeId, onForget }:
     }
   }
 
+  const loadMenus = useCallback(async () => {
+    try {
+      setMenus((await fetchMenuBoard(storeId)).menus)
+      setMenuError(null)
+    } catch (e) {
+      // 메뉴판을 못 읽는 것과 주문을 못 받는 것은 다른 일입니다 —
+      // 주문 화면은 그대로 두고 이 칸만 사정을 말합니다.
+      setMenuError(e instanceof Error ? e.message : '메뉴를 불러오지 못했습니다')
+    }
+  }, [storeId])
+
   const reload = useCallback(async () => {
     try {
       // Filtered here rather than at the API, which has no per-store query
@@ -141,7 +161,20 @@ function Pos({ deviceId, storeId, onForget }:
     }
   }, [storeId])
 
-  const connection = useTerminalSocket(deviceId, storeId, 'POS', reload)
+  // 프레임 하나에 두 가지가 옵니다. 결품 알림이면 메뉴판만, 그 밖이면
+  // 주문만 다시 읽습니다 — 결품 한 번에 주문 목록까지 새로 당길 이유가
+  // 없습니다. 프레임을 못 읽었으면(undefined) 둘 다 읽습니다.
+  const onEvent = useCallback((event?: TerminalEvent) => {
+    if (event === undefined) {
+      void reload()
+      void loadMenus()
+      return
+    }
+    if (isMenuEvent(event)) void loadMenus()
+    else void reload()
+  }, [reload, loadMenus])
+
+  const connection = useTerminalSocket(deviceId, storeId, 'POS', onEvent)
 
   // Polling as well as the socket. A nudge that never arrives must not
   // leave a shop staring at an empty screen while orders pile up — the
@@ -150,6 +183,18 @@ function Pos({ deviceId, storeId, onForget }:
     const timer = window.setInterval(() => void reload(), 15000)
     return () => window.clearInterval(timer)
   }, [reload])
+
+  // 메뉴판은 주문만큼 자주 바뀌지 않습니다. 소켓이 즉시 알려주므로
+  // 폴링은 안전망이고, 영업 상태와 같은 30초면 충분합니다.
+  useEffect(() => {
+    void loadMenus()
+    const timer = window.setInterval(() => void loadMenus(), 30000)
+    return () => window.clearInterval(timer)
+  }, [loadMenus])
+
+  // 결품만 따로 뽑아 위에 한 줄로 띄웁니다. 주문을 받는 사람이 제일
+  // 먼저 알아야 하는 것이 "오늘 없는 것"이라서요.
+  const soldOut = menus.filter((m) => m.soldOut)
 
   async function decide(order: Order, next: 'ACCEPTED' | 'REJECTED') {
     setBusyId(order.id)
@@ -207,6 +252,13 @@ function Pos({ deviceId, storeId, onForget }:
         </div>
       )}
       {businessDayError && <div className="error" role="alert">{businessDayError}</div>}
+
+      {soldOut.length > 0 && (
+        <div className="warn" role="status">
+          오늘 <strong>결품 {soldOut.length}개</strong> — {soldOut.map((m) => m.name).join(', ')}.
+          손님 화면에서는 고를 수 없습니다. 푸는 곳은 BO의 결품 화면입니다.
+        </div>
+      )}
 
       {connection === 'closed' && (
         <div className="warn" role="status">
@@ -294,6 +346,34 @@ function Pos({ deviceId, storeId, onForget }:
             </table>
           </div>
         )}
+      </section>
+
+      <section>
+        <h2>
+          오늘의 메뉴
+          {soldOut.length > 0 && <span className="count out">{soldOut.length}</span>}
+        </h2>
+        {menuError ? (
+          <div className="error" role="alert">{menuError}</div>
+        ) : menus.length === 0 ? (
+          <div className="empty">메뉴가 없습니다. BO의 메뉴 화면에서 먼저 등록하세요.</div>
+        ) : (
+          <div className="menu-grid">
+            {menus.map((menu) => (
+              <div className={`menu-chip${menu.soldOut ? ' out' : ''}`} key={menu.menuCode}>
+                <span className="chip-name">{menu.name}</span>
+                <span className="chip-meta">
+                  {menu.price === null ? '가격 미등록' : formatAmount(menu.price)}
+                  {menu.estimatedMinutes !== null && ` · 약 ${menu.estimatedMinutes}분`}
+                </span>
+                {menu.soldOut && <span className="chip-flag">결품</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="muted hint">
+          읽기 전용입니다 — 결품을 걸고 푸는 곳은 BO입니다. 여기는 걸린 결과가 바로 비칩니다.
+        </p>
       </section>
 
       <footer>

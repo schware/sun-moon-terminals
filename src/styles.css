@@ -166,3 +166,45 @@ footer {
   border: 1px solid rgba(91, 140, 255, 0.35);
   white-space: nowrap;
 }
+
+/* 오늘의 메뉴 — 단말의 로컬 마스터.
+   POS에서는 읽기 전용입니다. 결품을 걸고 푸는 곳은 BO이고, 여기는 그
+   결과가 비치는 곳입니다. 주문을 받는 사람이 "오늘 없는 것"을 팔지
+   않으려면 화면 안에 있어야 하지만, 두 군데서 고칠 수 있으면 두 값이
+   달라집니다. */
+.count.out { background: var(--danger); color: #0b0d12; }
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.menu-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.menu-chip .chip-name { font-size: 14px; font-weight: 600; }
+.menu-chip .chip-meta { font-size: 12px; color: var(--muted); }
+.menu-chip .chip-flag {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--danger);
+}
+/* 글자를 읽기 전에 색으로 먼저 보여야 합니다. */
+.menu-chip.out {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.10);
+}
+.menu-chip.out .chip-name { text-decoration: line-through; color: var(--muted); }
+
+.hint { margin: 10px 0 0; }
