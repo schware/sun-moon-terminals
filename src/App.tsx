@@ -6,6 +6,7 @@ import {
   fetchOrders,
   formatAmount,
   formatTime,
+  handOver,
   isMenuEvent,
   STATUS_LABEL,
   type BusinessDayStatus,
@@ -74,6 +75,11 @@ function Kds({ deviceId, storeId, onForget }:
   // 그건 손님 화면에서 이미 막힙니다. 이미 들어와 있는 티켓 중에 그
   // 메뉴가 있으면 지금 카운터에 말해야 하기 때문입니다.
   const [soldOut, setSoldOut] = useState<MenuBoardItem[]>([])
+
+  // 수령 확인 중인 주문과, 손님이 불러준 번호.
+  const [handingOver, setHandingOver] = useState<Order | null>(null)
+  const [pin, setPin] = useState('')
+  const [pinError, setPinError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -173,12 +179,43 @@ function Kds({ deviceId, storeId, onForget }:
     [orders, inToday, deviceId]
   )
 
+  /**
+   * 수령 대기 — 조리는 끝났고 아직 아무도 안 가져간 주문.
+   *
+   * DID에 지금 떠 있는(또는 떠 있었던) 것들이고, 손님이 번호를 들고
+   * 오면 여기서 찾습니다. 최근 완료와 갈라 둔 이유: 저쪽은 지나간
+   * 기록이고 이쪽은 <b>지금 할 일</b>입니다.
+   */
+  const waitingPickup = useMemo(
+    () => orders.filter((o) => inToday(o) && o.status === 'PRODUCED'),
+    [orders, inToday]
+  )
+
   const recent = useMemo(
     () => orders.filter((o) => inToday(o)
-      && (o.status === 'PRODUCED' || o.status === 'DELIVERING' || o.status === 'COMPLETED'))
+      && (o.status === 'DELIVERING' || o.status === 'COMPLETED'))
       .slice(0, 12),
     [orders, inToday]
   )
+
+  async function confirmPickup() {
+    if (handingOver === null) return
+    setBusyId(handingOver.id)
+    setPinError(null)
+    try {
+      await handOver(handingOver.id, pin.trim(), deviceId)
+      setHandingOver(null)
+      setPin('')
+    } catch (e) {
+      // 403(번호 불일치)과 409(이미 가져감)는 직원이 손님에게 할 말이
+      // 다릅니다. 창을 닫지 않고 그 자리에 띄워야 다시 물어볼 수
+      // 있습니다.
+      setPinError(e instanceof Error ? e.message : '수령 확인을 하지 못했습니다')
+    } finally {
+      setBusyId(null)
+      await reload()
+    }
+  }
 
   async function complete(order: Order) {
     setBusyId(order.id)
@@ -262,7 +299,7 @@ function Kds({ deviceId, storeId, onForget }:
             {cooking.map((order) => (
               <article className="card" key={order.id}>
                 <div className="card-head">
-                  <span className="order-no">#{order.id}</span>
+                  <span className="order-no">{order.pickupNo ?? `#${order.id}`}</span>
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
@@ -284,6 +321,77 @@ function Kds({ deviceId, storeId, onForget }:
       </section>
 
       <section>
+        <h2>
+          수령 대기
+          {waitingPickup.length > 0 && <span className="count">{waitingPickup.length}</span>}
+        </h2>
+        {waitingPickup.length === 0 ? (
+          <div className="empty">
+            {today === null ? '개점된 판매일자가 없습니다.' : '가져갈 주문이 없습니다.'}
+          </div>
+        ) : (
+          <div className="cards">
+            {waitingPickup.map((order) => (
+              <article className="card ready" key={order.id}>
+                <div className="card-head">
+                  <span className="order-no">{order.pickupNo ?? `#${order.id}`}</span>
+                  {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
+                  <span className="muted">{formatTime(order.updatedAt)}</span>
+                </div>
+                <div className="customer">{order.menuName}</div>
+                <div className="row">
+                  <button
+                    className="btn accept"
+                    disabled={busyId === order.id}
+                    onClick={() => { setPin(''); setPinError(null); setHandingOver(order) }}
+                  >
+                    수령 확인
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {handingOver && (
+        <div className="sheet-backdrop" role="dialog" aria-modal="true">
+          <div className="sheet">
+            <h3>{handingOver.pickupNo ?? `#${handingOver.id}`} 수령</h3>
+            <p className="muted">
+              {handingOver.menuName}
+              {tableLabel(handingOver) && <> · {tableLabel(handingOver)}</>}
+            </p>
+            <p className="muted">
+              손님 화면의 <strong>네 자리 수령번호</strong>를 물어보고 그대로 입력하세요.
+              {handingOver.pickupPin === null && <> 이 주문은 수령번호가 없던 시절의 것이라 비워두고 확인하면 됩니다.</>}
+            </p>
+            <input
+              className="pin-input"
+              type="text"
+              inputMode="numeric"
+              autoFocus
+              maxLength={4}
+              placeholder="0000"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void confirmPickup() }}
+            />
+            {pinError && <div className="error" role="alert">{pinError}</div>}
+            <div className="row">
+              <button className="btn accept" disabled={busyId === handingOver.id}
+                      onClick={() => void confirmPickup()}>
+                {busyId === handingOver.id ? '확인 중…' : '내주기'}
+              </button>
+              <button className="btn" onClick={() => { setHandingOver(null); setPinError(null) }}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <section>
         <h2>최근 완료</h2>
         {recent.length === 0 ? (
           <div className="empty">아직 완료한 주문이 없습니다.</div>
@@ -292,13 +400,13 @@ function Kds({ deviceId, storeId, onForget }:
             <table>
               <thead>
                 <tr>
-                  <th>번호</th><th>메뉴</th><th>금액</th><th>상태</th><th>시각</th>
+                  <th>수령번호</th><th>메뉴</th><th>금액</th><th>상태</th><th>시각</th>
                 </tr>
               </thead>
               <tbody>
                 {recent.map((order) => (
                   <tr key={order.id}>
-                    <td className="muted">#{order.id}</td>
+                    <td className="muted">{order.pickupNo ?? `#${order.id}`}</td>
                     <td>{order.menuName}</td>
                     <td>{formatAmount(order.amount)}</td>
                     <td>

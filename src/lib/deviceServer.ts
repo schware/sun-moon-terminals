@@ -53,6 +53,23 @@ export interface Order {
    */
   floor: number | null
   tableNo: string | null
+  /**
+   * 수령번호 — 손님이 "이거 제 거예요"를 증명하는 값. 두 조각입니다.
+   *
+   * `pickupNo` 는 **부르는 번호**입니다. DID에 크게 뜨고 손님이 보고
+   * 옵니다 — 자리 + 일련번호("7-12", 2층이면 "2-7-12", 테이블이 아니면
+   * "P-12"). 층이 2층부터 붙는 것은, 1층 7번과 2층 7번이 같은 번호를
+   * 받으면 두 손님이 같은 번호를 들고 오기 때문입니다.
+   *
+   * `pickupPin` 은 **증명하는 번호**입니다. 4자리이고, 같은 번호를 본
+   * 다른 손님이 먼저 가져가는 것을 막는 것이 이 값의 전부라 화면에
+   * 크게 띄우지 않습니다.
+   *
+   * 2026-09-17 이전 주문에는 둘 다 없습니다(null). 그 경우 화면은
+   * 수령번호 칸을 아예 그리지 않습니다 — 빈 칸은 누락처럼 읽힙니다.
+   */
+  pickupNo: string | null
+  pickupPin: string | null
   placedAt: string
   updatedAt: string
 }
@@ -96,6 +113,7 @@ async function failure(res: Response): Promise<Error> {
   } catch {
     // not JSON
   }
+  if (res.status === 403) return new Error('수령번호가 맞지 않습니다')
   if (res.status === 409) return new Error('이미 처리된 주문입니다')
   if (res.status === 502) return new Error('주문 서비스에 연결할 수 없습니다')
   return new Error(`요청이 실패했습니다 (HTTP ${res.status})`)
@@ -184,6 +202,28 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
   const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as MenuBoard
+}
+
+/**
+ * 수령 확인 — 손님이 번호를 내밀고 가져가는 순간.
+ *
+ * 일반 상태 전이와 따로인 이유: 번호 검사와 전이가 한 덩어리여야
+ * 빠뜨릴 수가 없습니다. 답이 셋으로 갈립니다.
+ *
+ *   403  번호가 맞지 않습니다   — 당신 것이 아닙니다
+ *   409  아직 / 이미            — 조리 중이거나 이미 가져갔습니다
+ *   200  넘어갔습니다 (COMPLETED)
+ *
+ * 앞의 둘은 직원이 손님에게 할 말이 다르므로 메시지도 서버가 주는
+ * 것을 그대로 씁니다.
+ */
+export async function handOver(orderId: number, pin: string, deviceId: string): Promise<Order> {
+  const params = new URLSearchParams({ id: String(orderId), deviceId })
+  if (pin) params.set('pin', pin)
+
+  const res = await fetch(`${BASE}/orders/pickup?${params}`, { method: 'POST' })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as Order
 }
 
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
