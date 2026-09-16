@@ -70,6 +70,10 @@ export interface Order {
    */
   pickupNo: string | null
   pickupPin: string | null
+  /** 거래번호 — 매출 키의 마지막 자리. POS가 채번하고, 수락 전에는 null입니다. */
+  tranNo: string | null
+  /** 이 주문이 들어온 테이블 QR의 코드. 키의 일부가 아닌 추가 값입니다. */
+  qrCode: string | null
   placedAt: string
   updatedAt: string
 }
