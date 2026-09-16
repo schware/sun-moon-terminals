@@ -9,7 +9,8 @@ import {
   fetchBusinessDayStatus,
   STATUS_LABEL,
   type BusinessDayStatus,
-  type Order
+  type Order,
+  tableLabel
 } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
@@ -236,6 +237,7 @@ function Pos({ deviceId, storeId, onForget }:
               <article className="card" key={order.id}>
                 <div className="card-head">
                   <span className="order-no">#{order.id}</span>
+                  {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.placedAt)}</span>
                 </div>
                 <div className="customer">{order.customerId}</div>

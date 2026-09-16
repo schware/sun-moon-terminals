@@ -33,8 +33,22 @@ export interface Order {
   amount: number
   status: OrderStatus
   acceptedBy: string | null
+  /**
+   * 도착지 — "이 메뉴를 저 자리로". 테이블 QR로 들어온 주문에만 있고,
+   * 매장 선택 화면이나 (앞으로의) 포장·배달 주문은 null입니다.
+   * null이 "모른다"가 아니라 "테이블이 아니다"라는 뜻입니다.
+   */
+  floor: number | null
+  tableNo: string | null
   placedAt: string
   updatedAt: string
+}
+
+/** 화면에 붙일 자리 이름. 번호뿐이면 "번"을 붙입니다 — "3 자리"는 어색합니다. */
+export function tableLabel(order: { floor: number | null; tableNo: string | null }): string | null {
+  if (order.tableNo === null) return null
+  const name = /^\d+$/.test(order.tableNo) ? order.tableNo + '번' : order.tableNo
+  return order.floor !== null && order.floor > 1 ? order.floor + '층 ' + name : name
 }
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
