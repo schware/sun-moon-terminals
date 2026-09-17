@@ -219,12 +219,12 @@ function Kds({ deviceId, storeId, onForget }:
     [orders, inToday]
   )
 
-  async function confirmPickup() {
+  async function confirmPickup(override = false) {
     if (handingOver === null) return
     setBusyId(handingOver.id)
     setPinError(null)
     try {
-      await handOver(handingOver.id, pin.trim(), deviceId)
+      await handOver(handingOver.id, pin.trim(), deviceId, override)
       setHandingOver(null)
       setPin('')
     } catch (e) {
@@ -467,6 +467,33 @@ function Kds({ deviceId, storeId, onForget }:
               <button className="btn" onClick={() => { setHandingOver(null); setPinError(null) }}>
                 취소
               </button>
+            </div>
+
+            {/*
+              강제 진행. 번호를 못 대는 손님은 실제로 있습니다 — 화면을
+              껐고, 일행이 대신 왔고, 종이를 잃어버렸습니다. 그때 내줄
+              방법이 없으면 매장은 줄을 세운 채로 막힙니다.
+
+              그렇다고 번호 칸을 지우지는 않습니다. 필수 입력이 거슬리면
+              사람들은 그것을 무의미하게 만드는 방법을 찾습니다 — 전
+              직원이 아는 고정 번호를 쓰거나, 손님에게 안 묻고 화면의
+              번호를 그대로 칩니다. 그러면 기록에는 "확인함"만 남고
+              실제로는 아무도 확인하지 않게 됩니다.
+
+              그래서 아래에 따로 둡니다: 기본은 번호를 맞춰 보는 것이고,
+              이건 한 번 더 누르는 다른 버튼이며, 누른 건은 표시가 남습니다.
+            */}
+            <div className="force-row">
+              <button
+                className="btn force"
+                disabled={busyId === handingOver.id}
+                onClick={() => void confirmPickup(true)}
+              >
+                번호 없이 내주기
+              </button>
+              <span className="muted">
+                번호를 못 대는 손님일 때. 이 건은 <strong>번호 확인 없음</strong>으로 남습니다.
+              </span>
             </div>
           </div>
         </div>

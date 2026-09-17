@@ -204,6 +204,31 @@ footer {
 }
 .pin-input:focus { outline: none; border-color: var(--accent); }
 
+/* 강제 진행.
+   내주기 버튼과 **같은 줄에 두지 않습니다**. 나란히 있으면 둘 중
+   가까운 쪽을 누르게 되고, 바쁜 시간에는 그게 늘 강제 진행입니다 —
+   그러면 수령번호가 하루 만에 장식이 됩니다.
+
+   색도 초록(내주기)이나 빨강(취소/위험)이 아닙니다. 이건 사고가
+   아니라 **덜 좋은 길**이고, 매장이 죄책감을 느껴야 할 동작도
+   아닙니다. 눈에 띄되 손이 먼저 가지는 않을 정도. */
+.force-row {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.force-row .muted { font-size: 13px; flex: 1; min-width: 180px; }
+.btn.force {
+  color: var(--warn, #ffb020);
+  border-color: rgba(255, 176, 32, 0.35);
+  background: rgba(255, 176, 32, 0.08);
+}
+.btn.force:hover:not(:disabled) { background: rgba(255, 176, 32, 0.16); }
+
 /* 조리 중 — 이 주방이 집은 주문.
    조리 대기(테두리 기본)와 수령 대기(초록)의 가운데입니다. 색이 셋이면
    주방이 화면을 읽지 않고 훑기만 해도 어느 칸이 자기 일인지 압니다. */

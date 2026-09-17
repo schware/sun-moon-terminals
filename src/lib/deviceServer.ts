@@ -232,9 +232,16 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
  * 앞의 둘은 직원이 손님에게 할 말이 다르므로 메시지도 서버가 주는
  * 것을 그대로 씁니다.
  */
-export async function handOver(orderId: number, pin: string, deviceId: string): Promise<Order> {
+export async function handOver(
+  orderId: number, pin: string, deviceId: string, override = false
+): Promise<Order> {
   const params = new URLSearchParams({ id: String(orderId), deviceId })
   if (pin) params.set('pin', pin)
+  // 강제 진행. 번호를 못 대는 손님은 실제로 있고(화면을 껐고, 일행이
+  // 대신 왔고, 종이를 잃어버렸고), 그때 내줄 방법이 없으면 매장이
+  // 줄을 세운 채 막힙니다. 검사를 끄는 것이 아니라 건너뛴 사실이
+  // 주문에 남습니다.
+  if (override) params.set('override', 'true')
 
   const res = await fetch(`${BASE}/orders/pickup?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
