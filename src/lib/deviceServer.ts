@@ -281,11 +281,26 @@ export interface Notice {
   startsAt: string
   endsAt: string | null
   createdBy: string | null
+  /**
+   * **이 단말이** 이미 확인했는가.
+   *
+   * 서버가 판단합니다(`pos_notice_receipt`). 화면이 기억하면 새로고침
+   * 할 때마다 같은 긴급 메시지가 다시 화면을 가로막습니다 — 2026-09-18에
+   * 실제로 그랬습니다.
+   */
+  acknowledged: boolean
 }
 
-/** 지금 이 단말에 걸려 있는 공지. 긴급이 먼저 옵니다. */
-export async function fetchNotices(storeId: string, deviceType: string): Promise<Notice[]> {
-  const q = new URLSearchParams({ storeId, deviceType })
+/**
+ * 지금 이 단말에 걸려 있는 공지. 긴급이 먼저 옵니다.
+ *
+ * **장비 번호를 함께 보냅니다.** 이게 없으면 서버가 "이 단말이 봤는지"를
+ * 알 수 없어서, 확인을 눌러도 다음 조회에 같은 긴급이 또 옵니다.
+ */
+export async function fetchNotices(
+  storeId: string, deviceType: string, deviceNo: string
+): Promise<Notice[]> {
+  const q = new URLSearchParams({ storeId, deviceType, deviceNo })
   const res = await fetch(`${BASE}/pos/notices?${q}`)
   if (!res.ok) throw await failure(res)
   return ((await res.json()) as { notices: Notice[] }).notices

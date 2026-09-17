@@ -291,6 +291,12 @@ footer {
 .notice-list li strong { display: block; margin-bottom: 3px; }
 .notice-list li p { margin: 0 0 3px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
 .notice-list li.urgent strong { color: var(--danger); }
+/* 이미 본 긴급. 목록에는 남되 "다시 봐야 할 것"으로는 안 읽히게. */
+.notice-seen {
+  margin-left: 7px; font-size: 11px; font-weight: 600;
+  color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px;
+}
 
 /* 긴급 — 화면을 가로막습니다. 구석에 뜨면 바쁜 카운터에서는 안 읽힙니다. */
 .urgent-sheet { border: 2px solid var(--danger); }

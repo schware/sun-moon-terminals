@@ -103,27 +103,29 @@ function Pos({ deviceId, storeId, onForget }:
 
   // 이 단말에 걸린 공지 (업무 정의서 §3.5).
   const [notices, setNotices] = useState<Notice[]>([])
-  // 아직 안 닫은 긴급 메시지. **화면을 가로막습니다** — 긴급인데
+  // 아직 안 본 긴급 메시지. **화면을 가로막습니다** — 긴급인데
   // 구석에 뜨면 바쁜 카운터에서는 안 읽힙니다.
   const [urgent, setUrgent] = useState<Notice | null>(null)
-  // 이 창에서 이미 닫은 긴급. 다시 조회해도 또 뜨지 않게 합니다 —
-  // 서버의 확인 기록은 단말 단위라, 같은 단말의 두 번째 조회에서
-  // 또 막으면 일이 안 됩니다.
-  const [dismissed, setDismissed] = useState<Set<number>>(() => new Set())
+  // 방금 닫은 것. **서버가 확인 기록의 주인**이고(2026-09-18 고침),
+  // 이건 확인을 누른 순간부터 다음 조회까지의 몇 초를 메우는 값입니다 —
+  // 그 사이에 폴링이 돌면 방금 닫은 것이 다시 뜹니다.
+  const [justClosed, setJustClosed] = useState<Set<number>>(() => new Set())
   // 목록을 펼쳤나. 평소에는 줄 하나로 접혀 있습니다.
   const [noticesOpen, setNoticesOpen] = useState(false)
 
   const loadNotices = useCallback(async () => {
     try {
-      const current = await fetchNotices(storeId, 'POS')
+      const current = await fetchNotices(storeId, 'POS', deviceId)
       setNotices(current)
-      // 안 닫은 긴급이 있으면 띄웁니다. 여러 개면 제일 최근 것부터 —
-      // 서버가 긴급을 앞에 놓고 최신순으로 줍니다.
-      setUrgent((open) => open ?? current.find((n) => n.urgent && !dismissed.has(n.id)) ?? null)
+      // **안 본 긴급만** 띄웁니다. 본 것인지는 서버가 압니다 — 화면이
+      // 기억하면 새로고침할 때마다 같은 것이 다시 가로막습니다.
+      setUrgent((open) => open
+        ?? current.find((n) => n.urgent && !n.acknowledged && !justClosed.has(n.id))
+        ?? null)
     } catch {
       // 공지를 못 읽은 것으로 주문 화면을 막지 않습니다. 장사가 먼저입니다.
     }
-  }, [storeId, dismissed])
+  }, [storeId, deviceId, justClosed])
 
   useEffect(() => {
     void loadNotices()
@@ -133,10 +135,14 @@ function Pos({ deviceId, storeId, onForget }:
     return () => window.clearInterval(timer)
   }, [loadNotices])
 
-  function closeUrgent(notice: Notice) {
-    setDismissed((current) => new Set(current).add(notice.id))
+  async function closeUrgent(notice: Notice) {
+    setJustClosed((current) => new Set(current).add(notice.id))
     setUrgent(null)
-    void acknowledgeNotice(notice.id, storeId, 'POS', deviceId)
+    // 확인을 **기다린 뒤에** 목록을 다시 읽습니다. 기다리지 않으면
+    // 그 조회가 아직 기록되기 전의 답을 받아 와서, 같은 것이 한 번 더
+    // 뜹니다.
+    await acknowledgeNotice(notice.id, storeId, 'POS', deviceId)
+    await loadNotices()
   }
 
   const loadBusinessDay = useCallback(async () => {
@@ -231,7 +237,7 @@ function Pos({ deviceId, storeId, onForget }:
     // 사람이 지금 읽어야 하는 글이라 한 번 더 왕복할 시간이 아깝고,
     // 그 사이에 소켓이 끊기면 아예 못 보게 됩니다.
     if (isNoticeEvent(event)) {
-      if (event.noticeId !== undefined && !dismissed.has(event.noticeId)) {
+      if (event.noticeId !== undefined && !justClosed.has(event.noticeId)) {
         setUrgent({
           id: event.noticeId,
           scope: event.storeId ?? storeId,
@@ -241,7 +247,8 @@ function Pos({ deviceId, storeId, onForget }:
           urgent: true,
           startsAt: new Date().toISOString(),
           endsAt: null,
-          createdBy: null
+          createdBy: null,
+          acknowledged: false
         })
       }
       // 목록도 같이 당깁니다 — 닫은 뒤에 다시 볼 수 있어야 합니다.
@@ -250,7 +257,7 @@ function Pos({ deviceId, storeId, onForget }:
     }
     if (isMenuEvent(event)) void loadMenus()
     else void reload()
-  }, [reload, loadMenus, loadNotices, dismissed, storeId])
+  }, [reload, loadMenus, loadNotices, justClosed, storeId])
 
   const connection = useTerminalSocket(deviceId, storeId, 'POS', onEvent)
 
@@ -368,7 +375,14 @@ function Pos({ deviceId, storeId, onForget }:
             <ul className="notice-list">
               {notices.map((notice) => (
                 <li key={notice.id} className={notice.urgent ? 'urgent' : undefined}>
-                  <strong>{notice.title}</strong>
+                  <strong>
+                    {notice.title}
+                    {/* 본 것도 목록에는 남습니다 — 한 번 읽고 사라지는
+                        글이면 내용을 되짚을 수가 없습니다. */}
+                    {notice.urgent && notice.acknowledged && (
+                      <span className="notice-seen">확인함</span>
+                    )}
+                  </strong>
                   <p>{notice.body}</p>
                   {notice.createdBy && <span className="muted">— {notice.createdBy}</span>}
                 </li>
