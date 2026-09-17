@@ -73,6 +73,18 @@ export interface Order {
   type: 'IN_STORE' | 'DELIVERY' | null
   placedAt: string
   updatedAt: string
+  /**
+   * 이 번호를 마지막으로 부른 시각.
+   *
+   * 조리가 끝나는 순간 처음 채워지고, KDS에서 "다시 부르기"를 누르면
+   * 그때로 밀립니다. DID가 **흐르는 화면**인 근거가 이 값입니다 —
+   * 화면이 스스로 무엇을 보여줬는지 기억하는 대신, 언제 불렸는지를
+   * 서버에 물어보면 새로고침해도 두 대를 걸어도 같은 것이 뜹니다.
+   *
+   * 2026-09-17 이전 주문에는 없습니다(null). 그 경우 안 뜹니다 —
+   * 어제 주문이 오늘 화면에 다시 나타나는 것이 더 나쁩니다.
+   */
+  calledAt: string | null
 }
 
 /** Whether a store has 개점'd, and which 판매일자 it is on. */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
@@ -8,16 +8,23 @@ const BUSINESS_DAY_POLL_MS = 30000
 const POLL_MS = 15000
 
 /**
- * 막 조리가 끝난 번호를 잠깐 강조하는 시간.
+ * 부른 번호가 화면에 머무는 시간.
  *
- * <p>이 화면이 예전에 쓰던 <b>15초 뒤 사라짐</b>과는 다른 것입니다.
- * 그때는 주문이 PRODUCED 에서 영영 안 움직였기 때문에 화면이 스스로
- * 지우는 수밖에 없었습니다. 지금은 수령 확인이 PRODUCED → COMPLETED
- * 로 옮겨 주므로, <b>가져갈 때까지 붙어 있는 것이 맞습니다</b> —
- * 손님이 잠깐 자리를 비운 사이에 자기 번호가 사라지면 그게 사고입니다.
+ * <p>DID는 상태를 보여주는 화면이 <b>아닙니다</b>. 조리가 끝난 번호가
+ * 잠깐 떴다가 지나가는 <b>흐르는 화면</b>입니다. 안 가져간 번호가
+ * 계속 쌓이면 화면이 목록이 되고, 목록이 되면 손님은 자기 번호를
+ * 찾느라 한참을 봅니다 — 지나가는 화면이라야 눈에 띕니다.
  *
- * <p>그래서 남는 것은 "사라짐"이 아니라 "새로 뜬 것 표시"입니다.
+ * <p>지나간 번호를 다시 올리는 길은 따로 있습니다: KDS의 "다시 부르기".
+ * 화면이 스스로 판단하지 않고 사람이 누릅니다 — 손님이 왔는지 아닌지는
+ * 주방에서만 압니다.
+ *
+ * <p>기준은 {@code calledAt} 이고 화면의 기억이 아닙니다. 그래서
+ * 새로고침해도, 두 대를 나란히 걸어도 같은 번호가 같은 시간만큼 뜹니다.
  */
+const CALL_WINDOW_MS = 90000
+
+/** 막 뜬 번호를 강조하는 시간. 흐르는 화면에서 '방금 나온 것'이 제일 중요합니다. */
 const FRESH_MS = 20000
 
 /**
@@ -80,13 +87,13 @@ function Did({ deviceId, storeId, onForget }:
   const [error, setError] = useState<string | null>(null)
 
   /**
-   * 조리 완료로 <b>막 넘어온</b> 주문과 그 시각.
+   * 화면이 흐르게 하는 시계.
    *
-   * <p>ref 인 이유: 이 값이 바뀐다고 화면을 다시 그릴 필요가 없습니다.
-   * 강조가 꺼지는 것은 아래의 느린 tick 이 맡습니다.
+   * <p>몇 초마다 다시 그립니다 — 부른 지 오래된 번호가 서버를 다시
+   * 묻지 않고도 스스로 빠지도록. 폴링에만 맡기면 창이 닫히는 순간이
+   * 폴링 주기에 묶여서 번호마다 최대 15초씩 더 붙어 있습니다.
    */
-  const freshRef = useRef<Map<number, number>>(new Map())
-  const [, forceTick] = useState(0)
+  const [now, setNow] = useState(() => Date.now())
 
   // A comma-separated storeId is a food-court style board watching
   // several branches at once — see the Device Server's
@@ -111,20 +118,8 @@ function Did({ deviceId, storeId, onForget }:
       ])
       const mine = (orders: Order[]) => orders.filter((o) => storeIds.includes(o.storeId))
 
-      const nextReady = mine(done)
-      // 조리 완료로 처음 넘어온 것만 강조 대상입니다. 이미 떠 있던
-      // 번호가 폴링할 때마다 다시 번쩍이면 화면이 시끄럽고, 손님은
-      // 어느 것이 방금 나온 것인지 구분할 수 없습니다.
-      const now = Date.now()
-      const known = new Set(ready.map((o) => o.id))
-      for (const order of nextReady) {
-        if (!known.has(order.id) && !freshRef.current.has(order.id)) {
-          freshRef.current.set(order.id, now)
-        }
-      }
-
       setCooking(mine(inProgress))
-      setReady(nextReady)
+      setReady(mine(done))
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '주문을 불러오지 못했습니다')
@@ -133,7 +128,7 @@ function Did({ deviceId, storeId, onForget }:
     // storeId itself (a primitive) instead keeps this stable across
     // renders the way the array literal would not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, ready])
+  }, [storeId])
 
   /**
    * Asks every watched store which 판매일자 it is on. Failures leave the
@@ -174,19 +169,9 @@ function Did({ deviceId, storeId, onForget }:
     return () => window.clearInterval(timer)
   }, [reloadBusinessDays])
 
-  // 강조를 끄는 tick. 화면을 다시 그리기만 하면 되므로 느려도 됩니다.
+  // 화면을 흐르게 하는 tick. 서버를 다시 묻지 않고 시간만 흘립니다.
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      const now = Date.now()
-      let changed = false
-      for (const [id, at] of freshRef.current) {
-        if (now - at > FRESH_MS) {
-          freshRef.current.delete(id)
-          changed = true
-        }
-      }
-      if (changed) forceTick((n) => n + 1)
-    }, 1000)
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -205,7 +190,20 @@ function Did({ deviceId, storeId, onForget }:
     .sort((a, b) => a.id - b.id), [days])
 
   const cookingCards = useMemo(() => ofToday(cooking), [cooking, ofToday])
-  const readyCards = useMemo(() => ofToday(ready), [ready, ofToday])
+
+  /**
+   * 부른 지 얼마 안 된 번호만. <b>안 가져갔다고 계속 두지 않습니다</b> —
+   * 그러면 화면이 목록이 되고, 목록에서는 방금 나온 번호가 안 보입니다.
+   *
+   * <p>지나간 번호는 KDS에서 다시 부를 수 있습니다. 화면이 스스로
+   * 판단하지 않는 이유: 손님이 왔는지 아닌지는 주방에서만 압니다.
+   */
+  const readyCards = useMemo(
+    () => ofToday(ready)
+      .filter((o) => o.calledAt != null && now - new Date(o.calledAt).getTime() < CALL_WINDOW_MS)
+      .sort((a, b) => new Date(b.calledAt!).getTime() - new Date(a.calledAt!).getTime()),
+    [ready, ofToday, now]
+  )
 
   /** Shops this board watches that are not trading right now. */
   const closedStores = storeIds.filter((id) => days[id] === null)
@@ -277,7 +275,11 @@ function Did({ deviceId, storeId, onForget }:
                     order={order}
                     showStore={isMultiStore}
                     tone="ready"
-                    fresh={freshRef.current.has(order.id)}
+                    fresh={now - new Date(order.calledAt!).getTime() < FRESH_MS}
+                    // 남은 시간을 띠로 보여줍니다. 흐르는 화면이라는
+                    // 것이 눈에 보여야, 번호가 사라졌을 때 손님이
+                    // "없어졌다"가 아니라 "지나갔다"로 읽습니다.
+                    remaining={1 - (now - new Date(order.calledAt!).getTime()) / CALL_WINDOW_MS}
                   />
                 ))}
               </div>
@@ -296,8 +298,9 @@ function Did({ deviceId, storeId, onForget }:
   )
 }
 
-function NumberCard({ order, showStore, tone, fresh = false }:
-  { order: Order; showStore: boolean; tone: 'cooking' | 'ready'; fresh?: boolean }) {
+function NumberCard({ order, showStore, tone, fresh = false, remaining }:
+  { order: Order; showStore: boolean; tone: 'cooking' | 'ready'
+    fresh?: boolean; remaining?: number }) {
   return (
     <article className={`ready-card ${tone}${fresh ? ' fresh' : ''}`}>
       {showStore && <div className="ready-store">{order.storeId}</div>}
@@ -308,6 +311,14 @@ function NumberCard({ order, showStore, tone, fresh = false }:
       <div className="ready-no">{order.pickupNo ?? `#${order.id}`}</div>
       {order.pickupNo && <div className="ready-sub">주문 #{order.id}</div>}
       <div className="ready-menu">{order.menuName}</div>
+      {remaining !== undefined && (
+        <div className="ready-bar">
+          <div
+            className="ready-bar-fill"
+            style={{ width: `${Math.max(0, Math.min(1, remaining)) * 100}%` }}
+          />
+        </div>
+      )}
     </article>
   )
 }
