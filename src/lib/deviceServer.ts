@@ -22,6 +22,7 @@ export type OrderStatus =
   | 'ACCEPTED'
   | 'REJECTED'
   | 'EXPIRED'
+  | 'COOKING'
   | 'PRODUCED'
   | 'DELIVERING'
   | 'COMPLETED'
@@ -74,6 +75,15 @@ export interface Order {
   tranNo: string | null
   /** 이 주문이 들어온 테이블 QR의 코드. 키의 일부가 아니라 영수증에 함께 찍히는 값입니다. */
   qrCode: string | null
+  /**
+   * POS가 이 주문을 받아 저장한 시각. **상태가 아닙니다** — 주문이
+   * 어느 단계인지가 아니라 전달이 됐는지입니다. 비어 있으면 POS가
+   * 아직 못 받은 것입니다.
+   */
+  receivedBy: string | null
+  receivedAt: string | null
+  /** 매장 주문인가 배달인가. 조리가 끝난 뒤 어디로 갈지를 정합니다. */
+  type: 'IN_STORE' | 'DELIVERY' | null
   placedAt: string
   updatedAt: string
 }
@@ -90,6 +100,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   ACCEPTED: '수락됨',
   REJECTED: '거절됨',
   EXPIRED: '시간 초과',
+  COOKING: '조리 중',
   PRODUCED: '생산 완료',
   DELIVERING: '배달 중',
   COMPLETED: '완료'
@@ -252,6 +263,24 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
   const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as MenuBoard
+}
+
+/**
+ * POS가 이 주문을 받아 화면에 올렸다고 알립니다 (업무 정의서 §5.3).
+ *
+ * **상태를 바꾸지 않습니다** — 주문은 여전히 수락을 기다립니다.
+ * 이 기록이 있어야 "POS가 아예 못 받았다"와 "받고도 매장이 답을
+ * 안 했다"가 갈립니다. 실패해도 삼킵니다: 이건 진단을 돕는 값이고,
+ * 이것 때문에 주문 받는 화면이 멈추면 안 됩니다.
+ */
+export async function reportReceived(orderId: number, deviceId: string): Promise<void> {
+  const params = new URLSearchParams({ id: String(orderId), deviceId })
+  try {
+    await fetch(`${BASE}/orders/received?${params}`, { method: 'POST' })
+  } catch {
+    // 기록이 빠지면 나중에 "POS가 못 받았다"로 보일 뿐, 주문 처리에는
+    // 영향이 없습니다.
+  }
 }
 
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {

@@ -8,6 +8,7 @@ import {
   formatTime,
   isMenuEvent,
   openBusinessDay,
+  reportReceived,
   fetchBusinessDayStatus,
   STATUS_LABEL,
   type BusinessDayStatus,
@@ -158,12 +159,22 @@ function Pos({ deviceId, storeId, onForget }:
       // business — and showing it would be worse than showing nothing.
       //
       // 판매일자로 거르는 일은 여기서 하지 않습니다 — 아래에서 파생시킵니다.
-      setOrders((await fetchOrders()).filter((o) => o.storeId === storeId))
+      const mine = (await fetchOrders()).filter((o) => o.storeId === storeId)
+      setOrders(mine)
+      // 화면에 올린 주문은 "POS가 받았다"입니다 (업무 정의서 §5.3).
+      // 아직 답하지 않은 주문만, 그리고 한 번만 보고합니다 — 상태를
+      // 바꾸는 호출이 아니라 전달 사실을 남기는 것이라, 두 번째부터는
+      // 서버가 처음 시각을 지킵니다.
+      for (const order of mine) {
+        if (order.status === 'PLACED' && order.receivedAt === null) {
+          void reportReceived(order.id, deviceId)
+        }
+      }
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '주문을 불러오지 못했습니다')
     }
-  }, [storeId])
+  }, [storeId, deviceId])
 
   // 프레임 하나에 두 가지가 옵니다. 결품 알림이면 메뉴판만, 그 밖이면
   // 주문만 다시 읽습니다 — 결품 한 번에 주문 목록까지 새로 당길 이유가
