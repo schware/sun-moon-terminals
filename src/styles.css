@@ -254,6 +254,54 @@ footer {
 .receipt-paper dd.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 /* 대기 카드의 줄 목록 — 수락 전에 무엇을 시켰는지 보여줍니다.
    금액만 보고 수락하면 주방에 들어가서야 무엇인지 압니다. */
+/* ---------- 공지 ---------- */
+
+/* 평소에는 한 줄. 상시 공지가 화면 위쪽을 차지하면 주문 목록이 밀리고,
+   며칠 지나면 아무도 안 읽습니다. */
+.notice-bar {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.notice-bar.open { border-color: var(--accent); }
+
+.notice-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px;
+  background: none; border: none; color: var(--text);
+  font-family: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.notice-head:hover { background: var(--panel-2); }
+.notice-icon {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft, rgba(91, 140, 255, 0.12)); color: var(--accent);
+}
+.notice-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-flag {
+  font-size: 11px; font-weight: 800;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 107, 107, 0.14); color: var(--danger);
+}
+
+.notice-list { list-style: none; margin: 0; padding: 0 12px 10px; }
+.notice-list li { padding: 9px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+.notice-list li strong { display: block; margin-bottom: 3px; }
+.notice-list li p { margin: 0 0 3px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
+.notice-list li.urgent strong { color: var(--danger); }
+
+/* 긴급 — 화면을 가로막습니다. 구석에 뜨면 바쁜 카운터에서는 안 읽힙니다. */
+.urgent-sheet { border: 2px solid var(--danger); }
+.urgent-tag {
+  display: inline-block; font-size: 12px; font-weight: 800;
+  padding: 3px 10px; border-radius: 999px; margin-bottom: 10px;
+  background: rgba(255, 107, 107, 0.14); color: var(--danger);
+}
+.urgent-sheet h3 { margin: 0 0 10px; font-size: 19px; }
+.urgent-body { margin: 0 0 18px; font-size: 15.5px; line-height: 1.6; white-space: pre-wrap; }
+
 .order-lines { list-style: none; margin: 4px 0 8px; padding: 0; font-size: 14px; }
 .order-lines li { padding: 2px 0; }
 

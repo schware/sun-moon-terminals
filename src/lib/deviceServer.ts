@@ -228,25 +228,88 @@ export async function closeBusinessDay(storeId: string, deviceId: string): Promi
 }
 
 /**
- * 소켓으로 오는 프레임. 지금 두 종류입니다.
+ * 소켓으로 오는 프레임. 지금 세 종류입니다.
  *
  * 주문 이벤트는 `orderId`를 들고 오고, 기준 정보 이벤트는 `type`이
- * `MENU_`로 시작합니다. 둘 다 **바뀌었다는 신호일 뿐**이고 화면이 믿는
- * 값이 아닙니다 — 무엇이 참인지는 다시 물어봅니다.
+ * `MENU_`로 시작하고, 긴급 메시지는 `type`이 `NOTICE`입니다.
+ *
+ * 앞의 둘은 **바뀌었다는 신호일 뿐**이고 화면이 믿는 값이 아닙니다 —
+ * 무엇이 참인지는 다시 물어봅니다. 긴급 메시지만 예외로 **내용을 싣고
+ * 옵니다**: 사람이 지금 읽어야 하는 글이라 한 번 더 왕복할 시간이
+ * 아깝고, 그 사이에 소켓이 끊기면 아예 못 보게 됩니다.
  */
 export interface TerminalEvent {
   orderId?: number
   status?: string
   storeId?: string
-  /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' — 주문 이벤트에는 없습니다. */
+  /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' | 'NOTICE' — 주문 이벤트에는 없습니다. */
   type?: string
   menuCode?: string
   businessDate?: string
+  /** type === 'NOTICE' 일 때만. */
+  noticeId?: number
+  title?: string
+  body?: string
+  urgent?: boolean
 }
 
 /** 이 프레임이 기준 정보(결품) 알림인가. 아니면 주문 쪽입니다. */
 export function isMenuEvent(event?: TerminalEvent): boolean {
   return typeof event?.type === 'string' && event.type.startsWith('MENU_')
+}
+
+/** 이 프레임이 긴급 메시지인가. */
+export function isNoticeEvent(event?: TerminalEvent): boolean {
+  return event?.type === 'NOTICE'
+}
+
+/**
+ * 단말에 걸린 공지 (업무 정의서 §3.5).
+ *
+ * 일반 공지는 물어봐서 가져오고, 긴급은 서버가 밀어 넣습니다. 그런데
+ * **둘 다 여기로 옵니다** — 밀기만 하면 그때 꺼져 있던 단말은 영영
+ * 모르기 때문에, 긴급도 조회로 다시 읽힙니다.
+ */
+export interface Notice {
+  id: number
+  /** 'ALL_STORES' 또는 매장 코드. */
+  scope: string
+  deviceType: string | null
+  title: string
+  body: string
+  urgent: boolean
+  startsAt: string
+  endsAt: string | null
+  createdBy: string | null
+}
+
+/** 지금 이 단말에 걸려 있는 공지. 긴급이 먼저 옵니다. */
+export async function fetchNotices(storeId: string, deviceType: string): Promise<Notice[]> {
+  const q = new URLSearchParams({ storeId, deviceType })
+  const res = await fetch(`${BASE}/pos/notices?${q}`)
+  if (!res.ok) throw await failure(res)
+  return ((await res.json()) as { notices: Notice[] }).notices
+}
+
+/**
+ * 이 단말이 그 공지를 봤다고 알립니다.
+ *
+ * 긴급에만 뜻이 있습니다 — 안 본 단말이 있으면 전화를 걸어야 하고,
+ * 그 목록이 없으면 전부에게 걸게 됩니다. 실패해도 조용히 넘어갑니다:
+ * 확인 기록을 못 남긴 것이 사람이 글을 읽은 것을 되돌리지는 않습니다.
+ */
+export async function acknowledgeNotice(
+  noticeId: number, storeId: string, deviceType: string, deviceNo: string
+): Promise<void> {
+  try {
+    await fetch(`${BASE}/pos/notices/ack`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ noticeId, storeId, deviceType, deviceNo })
+    })
+  } catch {
+    // 위 주석대로 — 삼킵니다.
+  }
 }
 
 /**

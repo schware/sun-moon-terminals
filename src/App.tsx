@@ -6,13 +6,17 @@ import {
   fetchOrders,
   formatAmount,
   formatTime,
+  acknowledgeNotice,
+  fetchNotices,
   isMenuEvent,
+  isNoticeEvent,
   openBusinessDay,
   reportReceived,
   fetchBusinessDayStatus,
   STATUS_LABEL,
   type BusinessDayStatus,
   type MenuBoardItem,
+  type Notice,
   type Order,
   type TerminalEvent,
   tableLabel
@@ -96,6 +100,44 @@ function Pos({ deviceId, storeId, onForget }:
   // 방금 수락한 주문의 영수증. 수락 직후 한 번 뜨고, 닫으면 사라집니다
   // — 다시 필요하면 최근 주문에서 다시 엽니다.
   const [receipt, setReceipt] = useState<Order | null>(null)
+
+  // 이 단말에 걸린 공지 (업무 정의서 §3.5).
+  const [notices, setNotices] = useState<Notice[]>([])
+  // 아직 안 닫은 긴급 메시지. **화면을 가로막습니다** — 긴급인데
+  // 구석에 뜨면 바쁜 카운터에서는 안 읽힙니다.
+  const [urgent, setUrgent] = useState<Notice | null>(null)
+  // 이 창에서 이미 닫은 긴급. 다시 조회해도 또 뜨지 않게 합니다 —
+  // 서버의 확인 기록은 단말 단위라, 같은 단말의 두 번째 조회에서
+  // 또 막으면 일이 안 됩니다.
+  const [dismissed, setDismissed] = useState<Set<number>>(() => new Set())
+  // 목록을 펼쳤나. 평소에는 줄 하나로 접혀 있습니다.
+  const [noticesOpen, setNoticesOpen] = useState(false)
+
+  const loadNotices = useCallback(async () => {
+    try {
+      const current = await fetchNotices(storeId, 'POS')
+      setNotices(current)
+      // 안 닫은 긴급이 있으면 띄웁니다. 여러 개면 제일 최근 것부터 —
+      // 서버가 긴급을 앞에 놓고 최신순으로 줍니다.
+      setUrgent((open) => open ?? current.find((n) => n.urgent && !dismissed.has(n.id)) ?? null)
+    } catch {
+      // 공지를 못 읽은 것으로 주문 화면을 막지 않습니다. 장사가 먼저입니다.
+    }
+  }, [storeId, dismissed])
+
+  useEffect(() => {
+    void loadNotices()
+    // 긴급은 소켓이 밀어 넣으므로 이 폴링은 안전망입니다 — 꺼져 있다
+    // 켜진 단말이 그때 걸린 글을 보는 길이기도 합니다.
+    const timer = window.setInterval(() => void loadNotices(), 60000)
+    return () => window.clearInterval(timer)
+  }, [loadNotices])
+
+  function closeUrgent(notice: Notice) {
+    setDismissed((current) => new Set(current).add(notice.id))
+    setUrgent(null)
+    void acknowledgeNotice(notice.id, storeId, 'POS', deviceId)
+  }
 
   const loadBusinessDay = useCallback(async () => {
     try {
@@ -185,9 +227,30 @@ function Pos({ deviceId, storeId, onForget }:
       void loadMenus()
       return
     }
+    // 긴급 메시지는 **내용을 싣고 옵니다**. 다시 물어보지 않는 이유:
+    // 사람이 지금 읽어야 하는 글이라 한 번 더 왕복할 시간이 아깝고,
+    // 그 사이에 소켓이 끊기면 아예 못 보게 됩니다.
+    if (isNoticeEvent(event)) {
+      if (event.noticeId !== undefined && !dismissed.has(event.noticeId)) {
+        setUrgent({
+          id: event.noticeId,
+          scope: event.storeId ?? storeId,
+          deviceType: 'POS',
+          title: event.title ?? '긴급 메시지',
+          body: event.body ?? '',
+          urgent: true,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          createdBy: null
+        })
+      }
+      // 목록도 같이 당깁니다 — 닫은 뒤에 다시 볼 수 있어야 합니다.
+      void loadNotices()
+      return
+    }
     if (isMenuEvent(event)) void loadMenus()
     else void reload()
-  }, [reload, loadMenus])
+  }, [reload, loadMenus, loadNotices, dismissed, storeId])
 
   const connection = useTerminalSocket(deviceId, storeId, 'POS', onEvent)
 
@@ -279,6 +342,41 @@ function Pos({ deviceId, storeId, onForget }:
             : '끊김'}
         </span>
       </header>
+
+      {/*
+        공지 줄. 평소에는 **한 줄로 접혀** 있습니다 — 상시 공지가 화면
+        위쪽을 차지하면 정작 주문 목록이 밀리고, 며칠 지나면 아무도 안
+        읽습니다. 누르면 펴집니다.
+
+        긴급은 여기 말고 화면 전체를 막는 창으로 뜹니다(아래).
+      */}
+      {notices.length > 0 && (
+        <div className={`notice-bar${noticesOpen ? ' open' : ''}`}>
+          <button
+            className="notice-head"
+            onClick={() => setNoticesOpen((open) => !open)}
+            aria-expanded={noticesOpen}
+          >
+            <span className="notice-icon">공지</span>
+            <span className="notice-title">
+              {noticesOpen ? `${notices.length}건` : notices[0]!.title}
+            </span>
+            {notices.some((n) => n.urgent) && <span className="notice-flag">긴급</span>}
+            <span className="muted">{noticesOpen ? '접기' : '펼치기'}</span>
+          </button>
+          {noticesOpen && (
+            <ul className="notice-list">
+              {notices.map((notice) => (
+                <li key={notice.id} className={notice.urgent ? 'urgent' : undefined}>
+                  <strong>{notice.title}</strong>
+                  <p>{notice.body}</p>
+                  {notice.createdBy && <span className="muted">— {notice.createdBy}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       <div className="bizday-bar">
         <span className={businessDay?.open ? 'bizday-open' : 'muted'}>
@@ -459,6 +557,30 @@ function Pos({ deviceId, storeId, onForget }:
           읽기 전용입니다 — 결품을 걸고 푸는 곳은 BO입니다. 여기는 걸린 결과가 바로 비칩니다.
         </p>
       </section>
+
+      {/*
+        긴급 메시지. **화면을 가로막습니다** — 긴급인데 구석에 뜨면 바쁜
+        카운터에서는 안 읽힙니다. 닫으면 서버에 "이 단말이 봤다"가
+        기록되고, 그게 없으면 안 본 단말을 찾을 길이 없어 전 매장에
+        전화를 걸게 됩니다.
+
+        닫은 뒤에도 위 공지 줄에서 다시 볼 수 있습니다 — 한 번 읽고
+        사라지는 글이면 내용을 되짚을 수가 없습니다.
+      */}
+      {urgent && (
+        <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="긴급 메시지">
+          <div className="sheet urgent-sheet">
+            <div className="urgent-tag">긴급</div>
+            <h3>{urgent.title}</h3>
+            <p className="urgent-body">{urgent.body}</p>
+            <div className="row">
+              <button className="btn accept wide" onClick={() => closeUrgent(urgent)}>
+                확인했습니다
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {receipt && (
         <Receipt order={receipt} deviceId={deviceId} onClose={() => setReceipt(null)} />
