@@ -34,6 +34,15 @@ export interface OrderLine {
   quantity: number
   unitPrice: number
   lineAmount: number
+  /**
+   * 이 줄을 만드는 주방, 그리고 만들어진 시각.
+   *
+   * DID는 둘 다 안 씁니다 — 손님에게는 어느 주방이 만들었는지가 아무
+   * 뜻이 없고, 화면에 뜨는 것은 **다 된 주문**뿐이라 줄마다의 시각도
+   * 볼 이유가 없습니다. 서버가 주는 값이라 타입에만 적어 둡니다.
+   */
+  kdsDeviceId: string | null
+  producedAt: string | null
 }
 
 export interface Order {
