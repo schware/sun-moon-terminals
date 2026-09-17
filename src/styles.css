@@ -157,11 +157,54 @@ footer {
   color: var(--muted); font-size: 22px;
 }
 
+/* 두 칸 — 조리 중 / 조리 완료.
+   오른쪽이 넓습니다. 왼쪽은 "기다리세요"이고 오른쪽은 "오세요"라서,
+   멀리서 읽혀야 하는 쪽이 오른쪽입니다. 좁은 화면에서는 위아래로
+   쌓입니다 — 그때도 조리 완료가 아래가 아니라 **위**여야 하지만,
+   세로로 쌓이면 먼저 오는 쪽이 위라서 순서를 바꾸지 않습니다:
+   손님은 자기 번호를 찾는 것이지 칸을 읽는 것이 아닙니다. */
+.did-columns {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  gap: 26px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .did-columns { grid-template-columns: 1fr; }
+}
+
+.did-col { min-width: 0; }
+
+.did-col-head {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.did-col.ready .did-col-head { color: var(--up); border-bottom-color: rgba(62, 207, 142, 0.35); }
+.did-col.cooking .did-col-head { color: var(--muted); }
+
+.did-count {
+  font-size: 14px; font-weight: 600; padding: 2px 10px; border-radius: 999px;
+  background: var(--panel-2); color: var(--muted);
+}
+
+.did-empty.small { font-size: 16px; padding: 30px 0; flex: none; }
+
 .did-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
 }
+/* 조리 중 칸의 카드는 작아도 됩니다 — 확인하는 번호이지 부르는
+   번호가 아닙니다. */
+.did-grid.cooking { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 
 .ready-card {
   background: var(--panel);
@@ -171,15 +214,40 @@ footer {
   text-align: center;
 }
 
+/* 조리 중은 테두리도 글자도 흐립니다. 색이 둘 다 초록이면 손님은
+   어느 쪽이 자기를 부르는 것인지 색으로 구분할 수 없고, 결국 칸
+   제목을 읽어야 합니다 — 멀리서는 안 읽힙니다. */
+.ready-card.cooking {
+  border-color: var(--border);
+  background: var(--panel-2);
+  padding: 18px 14px 14px;
+}
+.ready-card.cooking .ready-no { font-size: 38px; color: var(--muted); }
+.ready-card.cooking .ready-menu { font-size: 15px; color: var(--muted); }
+.ready-card.cooking .ready-sub { display: none; }
+
+/* 막 넘어온 번호. 사라지지 않고 **강조만** 됩니다 — 예전에는 15초 뒤
+   화면에서 지웠는데, 그건 주문이 PRODUCED 에서 영영 안 움직이던 시절의
+   임시방편이었습니다. 지금은 수령 확인이 옮겨 주므로 가져갈 때까지
+   붙어 있는 것이 맞습니다: 잠깐 자리를 비운 사이에 자기 번호가
+   사라지는 것이 진짜 사고입니다. */
+.ready-card.fresh {
+  animation: fresh-pulse 1.1s ease-in-out 0s 6;
+  box-shadow: 0 0 0 4px rgba(62, 207, 142, 0.18);
+}
+
+@keyframes fresh-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(62, 207, 142, 0.14); }
+  50% { box-shadow: 0 0 0 10px rgba(62, 207, 142, 0.30); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ready-card.fresh { animation: none; }
+}
+
 .ready-no { font-size: 56px; font-weight: 800; color: var(--up); line-height: 1; margin-bottom: 10px; }
 .ready-sub { font-size: 14px; color: var(--muted); margin: -6px 0 8px; }
 .ready-menu { font-size: 22px; font-weight: 600; margin-bottom: 18px; }
-
-.ready-bar { height: 6px; border-radius: 999px; background: var(--panel-2); overflow: hidden; }
-.ready-bar-fill {
-  height: 100%; background: var(--up); border-radius: 999px;
-  transition: width 0.2s linear;
-}
 
 /* A label naming which of several watched stores a ready order belongs
    to — only rendered when this screen watches more than one. */
