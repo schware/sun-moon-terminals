@@ -8,10 +8,13 @@ import {
   formatTime,
   handOver,
   isMenuEvent,
+  lineBelongsTo,
   recall,
   STATUS_LABEL,
   type BusinessDayStatus,
+  type KdsRole,
   type MenuBoardItem,
+
   type Order,
   type TerminalEvent,
   tableLabel
@@ -39,20 +42,43 @@ const BUSINESS_DAY_POLL_MS = 30000
  * <p>금액도 메뉴 코드도 안 그립니다. 만드는 데 필요 없는 값이 섞이면
  * 필요한 값이 늦게 읽힙니다.
  */
-function TicketBody({ order }: { order: Order }) {
+function TicketBody({ order, deviceId, isMain }:
+  { order: Order; deviceId: string; isMain: boolean }) {
   if (order.lines.length === 0) {
     return <div className="customer">{order.menuName}</div>
   }
+  // 생산 주방은 **자기 줄만** 봅니다. 남의 주방 것까지 보이면 무엇을
+  // 만들어야 하는지가 흐려지고, 다 된 줄 알고 넘깁니다.
+  const shown = isMain ? order.lines : order.lines.filter((l) => lineBelongsTo(l, deviceId))
   return (
     <ul className="ticket-lines">
-      {order.lines.map((line) => (
-        <li key={line.seq}>
+      {shown.map((line) => (
+        <li key={line.seq} className={line.producedAt ? 'done' : undefined}>
           <span className="ticket-menu">{line.menuName}</span>
           {line.quantity > 1 && <span className="ticket-qty">×{line.quantity}</span>}
+          {/* 메인은 어느 주방 것인지와 끝났는지를 함께 봅니다 — 그게
+              "지금 누가 붙잡고 있나"에 답하는 유일한 값입니다. */}
+          {isMain && line.kdsDeviceId && (
+            <span className="ticket-kitchen">{line.kdsDeviceId}</span>
+          )}
+          {isMain && <span className="ticket-mark">{line.producedAt ? '완료' : '대기'}</span>}
         </li>
       ))}
     </ul>
   )
+}
+
+/** 아직 안 끝난 주방들 — 메인이 "누구를 기다리나"를 보는 값. */
+function pendingKitchens(order: Order): string[] {
+  return [...new Set(order.lines
+    .filter((l) => l.producedAt === null && l.kdsDeviceId !== null)
+    .map((l) => l.kdsDeviceId!))]
+}
+
+/** 이 주방이 자기 줄을 다 끝냈는가 — 옆 주방을 기다리는 중인지 알려면 필요합니다. */
+function myLinesDone(order: Order, deviceId: string): boolean {
+  const mineLines = order.lines.filter((l) => lineBelongsTo(l, deviceId))
+  return mineLines.length > 0 && mineLines.every((l) => l.producedAt !== null)
 }
 
 export default function App() {
@@ -63,17 +89,29 @@ export default function App() {
   const [storeId, setStoreId] = useState<string>(
     () => query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
   )
+  /**
+   * 이 화면이 하는 일 — 만드는 주방인가, 흐름을 보는 메인인가.
+   *
+   * 창(탭)마다 따로 기억합니다. 한 대의 기기에서 메인을 띄우고 옆
+   * 창에서 주방을 보는 것이 실제로 있을 일이라서요.
+   */
+  const [role, setRole] = useState<KdsRole>(
+    () => (query.get('role') ?? sessionStorage.getItem('kdsRole') ?? 'PRODUCTION') === 'MAIN'
+      ? 'MAIN' : 'PRODUCTION'
+  )
 
   if (!deviceId || !storeId) {
     return (
       <TerminalPrompt
-        onChosen={(store, device) => {
+        onChosen={(store, device, chosenRole) => {
           sessionStorage.setItem('storeId', store)
           sessionStorage.setItem('deviceId', device)
+          sessionStorage.setItem('kdsRole', chosenRole)
           localStorage.setItem('lastStoreId', store)
           localStorage.setItem('lastDeviceId', device)
           setStoreId(store)
           setDeviceId(device)
+          setRole(chosenRole)
         }}
       />
     )
@@ -83,9 +121,11 @@ export default function App() {
     <Kds
       deviceId={deviceId}
       storeId={storeId}
+      role={role}
       onForget={() => {
         sessionStorage.removeItem('deviceId')
         sessionStorage.removeItem('storeId')
+        sessionStorage.removeItem('kdsRole')
         setDeviceId('')
         setStoreId('')
       }}
@@ -93,8 +133,9 @@ export default function App() {
   )
 }
 
-function Kds({ deviceId, storeId, onForget }:
-  { deviceId: string; storeId: string; onForget: () => void }) {
+function Kds({ deviceId, storeId, role, onForget }:
+  { deviceId: string; storeId: string; role: KdsRole; onForget: () => void }) {
+  const isMain = role === 'MAIN'
   const [orders, setOrders] = useState<Order[]>([])
   const [businessDay, setBusinessDay] = useState<BusinessDayStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -207,10 +248,22 @@ function Kds({ deviceId, storeId, onForget }:
    * no filtering of its own. No assignment (null) means every KDS should
    * see it, matching the push's own fallback.
    */
+  /**
+   * 이 화면이 봐야 할 주문인가.
+   *
+   * **메인은 전부 봅니다** — 전체 흐름을 보는 것이 그 화면의 일입니다.
+   *
+   * 생산 주방은 <b>자기 줄이 하나라도 있는</b> 주문을 봅니다. 주문
+   * 전체의 주방 하나로 거르면, 첫 메뉴가 남의 주방 것인 주문에서 내
+   * 줄을 통째로 못 봅니다 — 2026-09-18에 매장에서 나온 보고가 그것이고,
+   * 주방이 줄에 붙은 뒤로 이 필터도 줄을 봅니다.
+   */
   const mine = useCallback(
     (order: Order) => inToday(order)
-      && (order.kdsDeviceId == null || order.kdsDeviceId === deviceId),
-    [inToday, deviceId]
+      && (isMain
+        || order.lines.length === 0
+        || order.lines.some((line) => lineBelongsTo(line, deviceId))),
+    [inToday, deviceId, isMain]
   )
 
   /** 조리 대기 — 매장이 받았지만 주방이 아직 안 집은 주문. */
@@ -335,7 +388,7 @@ function Kds({ deviceId, storeId, onForget }:
     <div className="shell">
       <header className="bar">
         <div>
-          <h1>KDS 주방 화면</h1>
+          <h1>{isMain ? 'KDS 메인 — 전체 흐름' : 'KDS 주방 화면'}</h1>
           <span className="muted">
             {storeId} · {deviceId}
             {today && <> · 판매일자 {today}</>}
@@ -401,7 +454,7 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <TicketBody order={order} />
+                <TicketBody order={order} deviceId={deviceId} isMain={isMain} />
                 <div className="amount">{formatAmount(order.amount)}</div>
                 <div className="row">
                   <button
@@ -439,23 +492,43 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <TicketBody order={order} />
+                <TicketBody order={order} deviceId={deviceId} isMain={isMain} />
                 <div className="amount">{formatAmount(order.amount)}</div>
-                <div className="row">
-                  <button
-                    className="btn accept"
-                    disabled={busyId === order.id}
-                    onClick={() => void complete(order)}
-                  >
-                    조리완료
-                  </button>
-                </div>
+                {/*
+                  내 줄은 끝났는데 주문이 아직 COOKING 이면, **옆 주방을
+                  기다리는 중**입니다. 그때 조리완료 버튼을 그대로 두면
+                  주방은 눌러도 아무 일이 안 일어나는 것을 보고 고장인 줄
+                  압니다. 무엇을 기다리는지 말해 줍니다.
+                */}
+                {!isMain && myLinesDone(order, deviceId) ? (
+                  <div className="waiting-others">
+                    내 것은 끝났습니다 — {pendingKitchens(order).join(', ')} 를 기다리는 중
+                  </div>
+                ) : (
+                  <div className="row">
+                    <button
+                      className="btn accept"
+                      disabled={busyId === order.id}
+                      onClick={() => void complete(order)}
+                    >
+                      {isMain ? '전부 조리완료' : '조리완료'}
+                    </button>
+                  </div>
+                )}
               </article>
             ))}
           </div>
         )}
       </section>
 
+      {/*
+        수령은 **메인의 일**입니다 (2026-09-18).
+
+        두 주방이 걸린 주문을 손님에게 건네려면 둘 다 끝났는지 알아야
+        하는데, 생산 주방은 자기 것밖에 모릅니다. 짜장면을 만든 주방이
+        초밥이 나왔는지 모르는 채로 내주면 손님은 반만 받아 갑니다.
+      */}
+      {isMain && (
       <section>
         <h2>
           수령 대기
@@ -474,7 +547,7 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <TicketBody order={order} />
+                <TicketBody order={order} deviceId={deviceId} isMain={isMain} />
                 <div className="row">
                   <button
                     className="btn accept"
@@ -497,6 +570,7 @@ function Kds({ deviceId, storeId, onForget }:
           </div>
         )}
       </section>
+      )}
 
       {handingOver && (
         <div className="sheet-backdrop" role="dialog" aria-modal="true">
@@ -605,16 +679,18 @@ function Kds({ deviceId, storeId, onForget }:
   )
 }
 
-function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
+function TerminalPrompt({ onChosen }:
+  { onChosen: (storeId: string, deviceId: string, role: KdsRole) => void }) {
   const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
   const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
+  const [role, setRole] = useState<KdsRole>('PRODUCTION')
   return (
     <div className="prompt">
       <form
         className="card"
         onSubmit={(e) => {
           e.preventDefault()
-          onChosen(store.trim(), device.trim())
+          onChosen(store.trim(), device.trim(), role)
         }}
       >
         <h1>단말 등록</h1>
@@ -622,6 +698,38 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
           이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
           기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다.
         </p>
+
+        {/*
+          하는 일을 고릅니다 (2026-09-18).
+
+          생산 주방은 **자기 줄만** 만듭니다. 메인은 전체 흐름을 보고,
+          다 된 주문을 손님에게 건넵니다 — 두 주방이 걸린 주문을 생산
+          주방이 내주면 반만 나간 것을 모릅니다.
+        */}
+        <div className="role-pick">
+          <label className={role === 'PRODUCTION' ? 'picked' : undefined}>
+            <input
+              type="radio"
+              checked={role === 'PRODUCTION'}
+              onChange={() => setRole('PRODUCTION')}
+            />
+            <span>
+              <strong>생산 주방</strong>
+              <em>내 줄만 만듭니다 (kds-01, kds-02…)</em>
+            </span>
+          </label>
+          <label className={role === 'MAIN' ? 'picked' : undefined}>
+            <input
+              type="radio"
+              checked={role === 'MAIN'}
+              onChange={() => setRole('MAIN')}
+            />
+            <span>
+              <strong>메인</strong>
+              <em>전체 흐름을 보고 손님에게 내줍니다</em>
+            </span>
+          </label>
+        </div>
         <input
           type="text"
           autoFocus

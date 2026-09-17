@@ -34,6 +34,40 @@ export interface OrderLine {
   quantity: number
   unitPrice: number
   lineAmount: number
+  /**
+   * 이 줄을 만드는 주방.
+   *
+   * 주문이 아니라 **줄**에 붙습니다. 한 주문이 두 주방에 걸칠 수
+   * 있습니다 — 중식과 일식을 같이 파는 매장에서 짜장면과 초밥을 함께
+   * 시킨 경우. null 은 "아무 주방이나"이고, 주방이 하나인 매장이 그렇습니다.
+   */
+  kdsDeviceId: string | null
+  /**
+   * 이 줄이 만들어진 시각. null 이면 아직입니다.
+   *
+   * 주문이 PRODUCED 로 가는 것은 **모든 줄이 끝났을 때**입니다 —
+   * 먼저 끝낸 주방이 주문 전체를 끝내면 DID가 번호를 부르고, 손님은
+   * 반만 만들어진 주문을 받으러 옵니다.
+   */
+  producedAt: string | null
+}
+
+/**
+ * 이 KDS가 하는 일.
+ *
+ * 매장에서 나온 정리(2026-09-18): 생산하는 KDS와 그 흐름을 관리하는
+ * KDS를 가릅니다.
+ *
+ * - `PRODUCTION` — kds-01, kds-02… **자기 줄만** 보고 만듭니다.
+ * - `MAIN` — 전체 흐름을 봅니다. 어느 주방이 붙잡고 있는지, 다 된
+ *   주문을 누가 내주는지가 여기 일입니다. 두 주방이 걸린 주문을 손님에게
+ *   건네는 것도 메인입니다 — 생산 주방은 자기 것밖에 모릅니다.
+ */
+export type KdsRole = 'PRODUCTION' | 'MAIN'
+
+/** 이 줄이 그 주방 것인가. 주방이 안 달린 줄은 아무나 만듭니다. */
+export function lineBelongsTo(line: OrderLine, deviceId: string): boolean {
+  return line.kdsDeviceId === null || line.kdsDeviceId === deviceId
 }
 
 export interface Order {
