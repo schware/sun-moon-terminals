@@ -26,6 +26,16 @@ export type OrderStatus =
   | 'DELIVERING'
   | 'COMPLETED'
 
+/** 주문 한 줄 — 메뉴 하나와 수량. */
+export interface OrderLine {
+  seq: number
+  menuCode: string | null
+  menuName: string
+  quantity: number
+  unitPrice: number
+  lineAmount: number
+}
+
 export interface Order {
   id: number
   storeId: string
@@ -73,6 +83,18 @@ export interface Order {
   type: 'IN_STORE' | 'DELIVERY' | null
   placedAt: string
   updatedAt: string
+  /**
+   * 주문의 줄들 (§4.4.2).
+   *
+   * **여기가 진짜입니다** — `menuName` 은 이 목록에서 뽑은 한 줄 요약
+   * ("짜장면 외 1건")이고, 금액은 줄들의 합입니다.
+   *
+   * 2026-09-18 이전 주문은 비어 있습니다. 그때는 주문 하나가 메뉴
+   * 하나였고 그 이름이 `menuName` 에 그대로 있어서, 화면은 줄이 비면
+   * 그 값으로 되돌아갑니다.
+   */
+  lines: OrderLine[]
+
   /**
    * 이 번호를 마지막으로 부른 시각.
    *

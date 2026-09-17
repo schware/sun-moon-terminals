@@ -310,7 +310,17 @@ function NumberCard({ order, showStore, tone, fresh = false, remaining }:
           누락처럼 읽힙니다. */}
       <div className="ready-no">{order.pickupNo ?? `#${order.id}`}</div>
       {order.pickupNo && <div className="ready-sub">주문 #{order.id}</div>}
-      <div className="ready-menu">{order.menuName}</div>
+      {/* 손님은 자기 번호를 찾으러 옵니다. 메뉴는 "맞나?"를 한 번 더
+          확인하는 값이라 줄을 다 펴지 않고 요약으로 둡니다 — 줄을 전부
+          그리면 카드가 길어지고 번호가 작아집니다. 개수만 덧붙입니다. */}
+      <div className="ready-menu">
+        {order.menuName}
+        {order.lines.length > 1 && (
+          <span className="ready-items">
+            {' '}{order.lines.reduce((n, line) => n + line.quantity, 0)}개
+          </span>
+        )}
+      </div>
       {remaining !== undefined && (
         <div className="ready-bar">
           <div

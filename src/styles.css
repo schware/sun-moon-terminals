@@ -248,6 +248,9 @@ footer {
 .ready-no { font-size: 56px; font-weight: 800; color: var(--up); line-height: 1; margin-bottom: 10px; }
 .ready-sub { font-size: 14px; color: var(--muted); margin: -6px 0 8px; }
 .ready-menu { font-size: 22px; font-weight: 600; margin-bottom: 18px; }
+/* 여러 개 시킨 손님에게 "몇 개 받아 가는지"를 말해 줍니다 — 한 봉지만
+   들고 가는 사고가 흔합니다. */
+.ready-items { font-size: 15px; color: var(--muted); font-weight: 500; }
 
 /* 남은 시간 띠.
    흐르는 화면이라는 것이 **눈에 보여야** 합니다. 띠가 없으면 번호가
