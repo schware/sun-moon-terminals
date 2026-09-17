@@ -27,6 +27,34 @@ const BUSINESS_DAY_POLL_MS = 30000
  * &deviceId= pinning). Duplicated rather than shared because these ship as
  * independent static bundles with no server of their own.
  */
+/**
+ * 티켓에 그리는 것 — <b>만들 것들</b>.
+ *
+ * <p>주방에 "짜장면 외 1건"을 보여주면 요리를 못 합니다. 줄이 있으면
+ * 줄을 전부 펴서 그리고, 없는 옛 주문만 요약으로 되돌아갑니다.
+ *
+ * <p>수량은 1일 때 안 씁니다 — "짜장면 ×1"은 읽는 사람에게 아무것도
+ * 더 말해주지 않고, 바쁜 주방에서는 읽을 것이 적을수록 좋습니다.
+ *
+ * <p>금액도 메뉴 코드도 안 그립니다. 만드는 데 필요 없는 값이 섞이면
+ * 필요한 값이 늦게 읽힙니다.
+ */
+function TicketBody({ order }: { order: Order }) {
+  if (order.lines.length === 0) {
+    return <div className="customer">{order.menuName}</div>
+  }
+  return (
+    <ul className="ticket-lines">
+      {order.lines.map((line) => (
+        <li key={line.seq}>
+          <span className="ticket-menu">{line.menuName}</span>
+          {line.quantity > 1 && <span className="ticket-qty">×{line.quantity}</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function App() {
   const query = new URLSearchParams(window.location.search)
   const [deviceId, setDeviceId] = useState<string>(
@@ -373,7 +401,7 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <div className="customer">{order.menuName}</div>
+                <TicketBody order={order} />
                 <div className="amount">{formatAmount(order.amount)}</div>
                 <div className="row">
                   <button
@@ -411,7 +439,7 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <div className="customer">{order.menuName}</div>
+                <TicketBody order={order} />
                 <div className="amount">{formatAmount(order.amount)}</div>
                 <div className="row">
                   <button
@@ -446,7 +474,7 @@ function Kds({ deviceId, storeId, onForget }:
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
                   <span className="muted">{formatTime(order.updatedAt)}</span>
                 </div>
-                <div className="customer">{order.menuName}</div>
+                <TicketBody order={order} />
                 <div className="row">
                   <button
                     className="btn accept"

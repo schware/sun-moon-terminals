@@ -190,6 +190,23 @@ footer {
 
 /* 네 자리를 한눈에 대조할 수 있게 크고 넓게. 직원이 화면과 손님의 말을
    번갈아 보는 순간이라, 작으면 잘못 읽습니다. */
+/* 티켓 본문 — 만들 것들.
+   주방은 이 줄들만 보고 움직입니다. 그래서 금액도 메뉴 코드도 안
+   그립니다: 만드는 데 필요 없는 값이 섞이면 필요한 값이 늦게 읽힙니다. */
+.ticket-lines { list-style: none; margin: 0; padding: 0; }
+.ticket-lines li {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0;
+  font-size: 17px; font-weight: 600;
+}
+.ticket-menu { flex: 1; min-width: 0; }
+/* 수량은 눈에 띄어야 합니다 — 세 그릇을 한 그릇으로 만드는 사고가
+   제일 흔합니다. */
+.ticket-qty {
+  font-size: 15px; font-weight: 800; color: var(--accent);
+  background: var(--panel-2); border-radius: 6px; padding: 1px 7px;
+}
+
 .pin-input {
   width: 100%;
   padding: 14px 16px;
