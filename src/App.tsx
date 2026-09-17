@@ -167,16 +167,37 @@ function Kds({ deviceId, storeId, onForget }:
     [today]
   )
 
+  /**
+   * 이 주방이 봐야 할 주문인가.
+   *
+   * The Device Server's push already targets one KDS when a menu is
+   * assigned to one — this mirrors that on the list itself, because a
+   * 15s poll or a fresh page load fetches every order at the store with
+   * no filtering of its own. No assignment (null) means every KDS should
+   * see it, matching the push's own fallback.
+   */
+  const mine = useCallback(
+    (order: Order) => inToday(order)
+      && (order.kdsDeviceId == null || order.kdsDeviceId === deviceId),
+    [inToday, deviceId]
+  )
+
+  /** 조리 대기 — 매장이 받았지만 주방이 아직 안 집은 주문. */
+  const waiting = useMemo(
+    () => orders.filter((o) => mine(o) && o.status === 'ACCEPTED'),
+    [orders, mine]
+  )
+
+  /**
+   * 조리 중 — 주방이 가져간 주문.
+   *
+   * 대기와 갈라 둔 이유는 카운터가 손님에게 할 말이 다르기
+   * 때문입니다: "아직 안 들어갔습니다"와 "만들고 있습니다"는 같은
+   * 답이 아닙니다.
+   */
   const cooking = useMemo(
-    // The Device Server's push already targets one KDS when a menu is
-    // assigned to one — this mirrors that on the list itself, because a
-    // 15s poll or a fresh page load fetches every ACCEPTED order at the
-    // store with no filtering of its own. No assignment (null) means
-    // every KDS should see it, matching the push's own fallback.
-    () => orders.filter((o) => inToday(o)
-      && o.status === 'ACCEPTED'
-      && (o.kdsDeviceId == null || o.kdsDeviceId === deviceId)),
-    [orders, inToday, deviceId]
+    () => orders.filter((o) => mine(o) && o.status === 'COOKING'),
+    [orders, mine]
   )
 
   /**
@@ -187,8 +208,8 @@ function Kds({ deviceId, storeId, onForget }:
    * 기록이고 이쪽은 <b>지금 할 일</b>입니다.
    */
   const waitingPickup = useMemo(
-    () => orders.filter((o) => inToday(o) && o.status === 'PRODUCED'),
-    [orders, inToday]
+    () => orders.filter((o) => mine(o) && o.status === 'PRODUCED'),
+    [orders, mine]
   )
 
   const recent = useMemo(
@@ -211,6 +232,28 @@ function Kds({ deviceId, storeId, onForget }:
       // 다릅니다. 창을 닫지 않고 그 자리에 띄워야 다시 물어볼 수
       // 있습니다.
       setPinError(e instanceof Error ? e.message : '수령 확인을 하지 못했습니다')
+    } finally {
+      setBusyId(null)
+      await reload()
+    }
+  }
+
+  /**
+   * 주방이 이 주문을 가져갑니다 — 조리 중.
+   *
+   * 업무 정의서의 "조리 중"은 KDS가 주문을 집는 순간의 이벤트입니다.
+   * 시간을 재는 버튼이 아니라, 이 티켓이 누구 손에 있는지를 말하는
+   * 표시입니다.
+   */
+  async function startCooking(order: Order) {
+    setBusyId(order.id)
+    setError(null)
+    try {
+      await changeStatus(order.id, 'COOKING', deviceId)
+    } catch (e) {
+      // 대개 409: 같은 주방의 다른 화면이 먼저 집었습니다. 어느 쪽이든
+      // 이 화면이 낡은 것이므로 서버와 다투지 말고 다시 읽습니다.
+      setError(e instanceof Error ? e.message : '처리하지 못했습니다')
     } finally {
       setBusyId(null)
       await reload()
@@ -288,16 +331,54 @@ function Kds({ deviceId, storeId, onForget }:
       <section>
         <h2>
           조리 대기
+          {waiting.length > 0 && <span className="count">{waiting.length}</span>}
+        </h2>
+        {waiting.length === 0 ? (
+          <div className="empty">
+            {today === null ? '개점된 판매일자가 없습니다.' : '새로 들어온 주문이 없습니다.'}
+          </div>
+        ) : (
+          <div className="cards">
+            {waiting.map((order) => (
+              <article className="card" key={order.id}>
+                <div className="card-head">
+                  <span className="order-no">{order.pickupNo ?? `#${order.id}`}</span>
+                  {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}
+                  <span className="muted">{formatTime(order.updatedAt)}</span>
+                </div>
+                <div className="customer">{order.menuName}</div>
+                <div className="amount">{formatAmount(order.amount)}</div>
+                <div className="row">
+                  <button
+                    className="btn accept"
+                    disabled={busyId === order.id}
+                    onClick={() => void startCooking(order)}
+                  >
+                    가져가기
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* 조리 중 — 이 주방이 집은 주문. 대기와 갈라 둔 이유는 카운터가
+          손님에게 할 말이 다르기 때문입니다: "아직 안 들어갔습니다"와
+          "만들고 있습니다"는 같은 답이 아닙니다. */}
+      <section>
+        <h2>
+          조리 중
           {cooking.length > 0 && <span className="count">{cooking.length}</span>}
         </h2>
         {cooking.length === 0 ? (
           <div className="empty">
-            {today === null ? '개점된 판매일자가 없습니다.' : '조리할 주문이 없습니다.'}
+            {today === null ? '개점된 판매일자가 없습니다.' : '조리 중인 주문이 없습니다.'}
           </div>
         ) : (
           <div className="cards">
             {cooking.map((order) => (
-              <article className="card" key={order.id}>
+              <article className="card cooking" key={order.id}>
                 <div className="card-head">
                   <span className="order-no">{order.pickupNo ?? `#${order.id}`}</span>
                   {tableLabel(order) && <span className="table-tag">{tableLabel(order)}</span>}

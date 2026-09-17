@@ -21,6 +21,7 @@ export type OrderStatus =
   | 'ACCEPTED'
   | 'REJECTED'
   | 'EXPIRED'
+  | 'COOKING'
   | 'PRODUCED'
   | 'DELIVERING'
   | 'COMPLETED'
@@ -74,6 +75,15 @@ export interface Order {
   tranNo: string | null
   /** 이 주문이 들어온 테이블 QR의 코드. 키의 일부가 아닌 추가 값입니다. */
   qrCode: string | null
+  /**
+   * POS가 이 주문을 받아 저장한 시각. **상태가 아닙니다** — 주문이
+   * 어느 단계인지가 아니라 전달이 됐는지입니다. 비어 있으면 POS가
+   * 아직 못 받은 것입니다.
+   */
+  receivedBy: string | null
+  receivedAt: string | null
+  /** 매장 주문인가 배달인가. 조리가 끝난 뒤 어디로 갈지를 정합니다. */
+  type: 'IN_STORE' | 'DELIVERY' | null
   placedAt: string
   updatedAt: string
 }
@@ -105,6 +115,7 @@ export const STATUS_LABEL: Record<OrderStatus, string> = {
   ACCEPTED: '수락됨',
   REJECTED: '거절됨',
   EXPIRED: '시간 초과',
+  COOKING: '조리 중',
   PRODUCED: '조리완료',
   DELIVERING: '배달 중',
   COMPLETED: '완료'
