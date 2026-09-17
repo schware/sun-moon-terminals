@@ -350,6 +350,18 @@ function Pos({ deviceId, storeId, onForget }:
                   <span className="muted">{formatTime(order.placedAt)}</span>
                 </div>
                 <div className="customer">{order.customerId}</div>
+                {/* 무엇을 시켰는지 수락 전에 보여야 합니다 — 안 그러면
+                    POS는 금액만 보고 수락하게 됩니다. */}
+                {order.lines.length > 0 && (
+                  <ul className="order-lines">
+                    {order.lines.map((line) => (
+                      <li key={line.seq}>
+                        {line.menuName}
+                        {line.quantity > 1 && <span className="muted"> × {line.quantity}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <div className="amount">{formatAmount(order.amount)}</div>
                 <div className="row">
                   <button
@@ -488,8 +500,24 @@ function Receipt({ order, deviceId, onClose }:
             <dt>거래번호</dt><dd className="strong">{order.tranNo ?? '—'}</dd>
           </dl>
           <hr />
+          {/* 영수증은 줄마다 한 행입니다. 손님이 받는 종이라 "외 2건"으로
+              뭉치면 무엇을 얼마에 샀는지 확인할 수가 없습니다. */}
+          {order.lines.length > 0 ? (
+            <table className="receipt-lines">
+              <tbody>
+                {order.lines.map((line) => (
+                  <tr key={line.seq}>
+                    <td>{line.menuName}</td>
+                    <td className="qty">{line.quantity}</td>
+                    <td className="amt">{formatAmount(line.lineAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <dl><dt>메뉴</dt><dd>{order.menuName}</dd></dl>
+          )}
           <dl>
-            <dt>메뉴</dt><dd>{order.menuName}</dd>
             <dt>금액</dt><dd className="strong">{formatAmount(order.amount)}</dd>
             {tableLabel(order) && <><dt>자리</dt><dd>{tableLabel(order)}</dd></>}
             {order.pickupNo && <><dt>수령번호</dt><dd className="strong">{order.pickupNo}</dd></>}
