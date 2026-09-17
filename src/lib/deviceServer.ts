@@ -232,6 +232,22 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
  * 앞의 둘은 직원이 손님에게 할 말이 다르므로 메시지도 서버가 주는
  * 것을 그대로 씁니다.
  */
+/**
+ * 번호를 다시 부릅니다 — DID에 한 번 더 띄우기 위해.
+ *
+ * DID는 상태를 보여주는 화면이 아니라 **흐르는 화면**입니다. 조리가
+ * 끝난 번호가 잠깐 떴다가 지나갑니다. 그 뒤에 손님이 오면 다시 불러야
+ * 하고, 그 버튼이 여기 KDS에 있습니다 — 화면은 DID지만 상황을 아는
+ * 사람은 주방에 있습니다.
+ *
+ * 상태는 바뀌지 않습니다. 주문은 여전히 PRODUCED 입니다.
+ */
+export async function recall(orderId: number): Promise<Order> {
+  const res = await fetch(`${BASE}/orders/recall?id=${orderId}`, { method: 'POST' })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as Order
+}
+
 export async function handOver(
   orderId: number, pin: string, deviceId: string, override = false
 ): Promise<Order> {

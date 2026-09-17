@@ -8,6 +8,7 @@ import {
   formatTime,
   handOver,
   isMenuEvent,
+  recall,
   STATUS_LABEL,
   type BusinessDayStatus,
   type MenuBoardItem,
@@ -80,6 +81,8 @@ function Kds({ deviceId, storeId, onForget }:
   const [handingOver, setHandingOver] = useState<Order | null>(null)
   const [pin, setPin] = useState('')
   const [pinError, setPinError] = useState<string | null>(null)
+  // 방금 다시 부른 주문. 버튼이 잠깐 "불렀습니다"로 바뀝니다.
+  const [recalled, setRecalled] = useState<number | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -218,6 +221,30 @@ function Kds({ deviceId, storeId, onForget }:
       .slice(0, 12),
     [orders, inToday]
   )
+
+  /**
+   * 번호를 다시 부릅니다.
+   *
+   * DID는 흐르는 화면이라 조리 완료 번호가 잠깐 떴다가 지나갑니다.
+   * 손님이 그 뒤에 오면 다시 띄워 줘야 하는데, 화면은 DID지만 상황을
+   * 아는 사람은 주방에 있습니다 — 그래서 버튼이 여기 있습니다.
+   *
+   * 눌렀다는 것을 잠깐 보여줍니다. 아무 반응이 없으면 직원은 눌렸는지
+   * 몰라서 다시 누르고, DID에는 같은 번호가 두 번 튑니다.
+   */
+  async function callAgain(order: Order) {
+    setBusyId(order.id)
+    try {
+      await recall(order.id)
+      setRecalled(order.id)
+      window.setTimeout(() => setRecalled((current) => (current === order.id ? null : current)), 2500)
+    } catch (e) {
+      setPinError(e instanceof Error ? e.message : '다시 부르지 못했습니다')
+    } finally {
+      setBusyId(null)
+      await reload()
+    }
+  }
 
   async function confirmPickup(override = false) {
     if (handingOver === null) return
@@ -427,6 +454,14 @@ function Kds({ deviceId, storeId, onForget }:
                     onClick={() => { setPin(''); setPinError(null); setHandingOver(order) }}
                   >
                     수령 확인
+                  </button>
+                  <button
+                    className="btn recall"
+                    disabled={busyId === order.id}
+                    onClick={() => void callAgain(order)}
+                    title="DID에 이 번호를 다시 띄웁니다"
+                  >
+                    {recalled === order.id ? '불렀습니다' : '다시 부르기'}
                   </button>
                 </div>
               </article>
