@@ -13,6 +13,8 @@ import {
   openBusinessDay,
   reportReceived,
   fetchBusinessDayStatus,
+  findOrder,
+  uploadSales,
   STATUS_LABEL,
   type BusinessDayStatus,
   type MenuBoardItem,
@@ -21,7 +23,9 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
-import { nextTranNo } from './lib/tranNo'
+import { drawClaimQr } from './lib/claimQr'
+import * as ledger from './lib/ledger'
+import { buildTrSale } from './lib/trSale'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /**
@@ -113,6 +117,18 @@ function Pos({ deviceId, storeId, onForget }:
   // 목록을 펼쳤나. 평소에는 줄 하나로 접혀 있습니다.
   const [noticesOpen, setNoticesOpen] = useState(false)
 
+  /**
+   * 아직 못 올린 거래 수 (umbrella docs/adr/0010).
+   *
+   * <p><b>화면에 있어야 합니다.</b> 이 플랫폼은 이미 조용한 실패에
+   * 시간을 잃었습니다 — `EVENTS_REDIS` 가 안 붙은 채로 며칠 동안
+   * 실시간 push 가 아무 일도 안 했고, 모든 화면이 자기 폴링으로
+   * 멀쩡해 보였습니다. 큐가 안 보이는 곳에서 차오르면 같은 모양의
+   * 사고가 됩니다.
+   */
+  const [unsent, setUnsent] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
   const loadNotices = useCallback(async () => {
     try {
       const current = await fetchNotices(storeId, 'POS', deviceId)
@@ -162,6 +178,96 @@ function Pos({ deviceId, storeId, onForget }:
     return () => window.clearInterval(timer)
   }, [loadBusinessDay])
 
+  /**
+   * 밀린 거래를 올립니다 (업무 정의서 §3.1, umbrella docs/adr/0010).
+   *
+   * <p>주문 흐름과 거래 전송은 <b>다른 경로</b>입니다. 수락은 그
+   * 자리에서 서버로 가고(주방이 티켓을 봐야 하니까), 거래 원장은
+   * 여기서 따로 올라갑니다. 한 동작이 둘을 냅니다 — 티켓은 지금,
+   * 원장은 나중에.
+   *
+   * <p>한 번에 배열로 보냅니다. 그리고 이미 받은 거래를 다시 보내도
+   * 서버가 오류를 내지 않아서, 올렸는지 확신이 없으면 그냥 다시
+   * 보내면 됩니다.
+   *
+   * @returns 올리고도 남은 건수.
+   */
+  const flush = useCallback(async (): Promise<number> => {
+    let queued: ledger.TranRow[]
+    try {
+      queued = await ledger.pending(storeId, deviceId)
+    } catch {
+      // IndexedDB 를 못 여는 브라우저·모드가 있습니다. 거래 전송이
+      // 안 되는 것과 주문을 못 받는 것은 다른 일이라, 화면은 그대로 둡니다.
+      return 0
+    }
+    if (queued.length === 0) {
+      setUnsent(0)
+      setUploadError(null)
+      return 0
+    }
+    try {
+      await uploadSales(queued.map((r) => r.payload))
+      await ledger.markSent(queued.map((r) => r.id))
+      setUploadError(null)
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : '거래를 올리지 못했습니다'
+      await ledger.markFailed(queued.map((r) => r.id), reason)
+      setUploadError(reason)
+    }
+    const left = await ledger.unsentCount(storeId, deviceId)
+    setUnsent(left)
+    return left
+  }, [storeId, deviceId])
+
+  /**
+   * 시작할 때 한 번 — 옛 채번을 옮겨오고, 열린 창을 닫고, 밀린 것을 올립니다.
+   *
+   * <p>순서가 중요합니다. 채번을 먼저 옮기지 않으면 번호가 1번부터
+   * 다시 시작하고, 창을 닫기 전에 올리면 아직 수락됐는지 모르는
+   * 거래가 매출로 올라갑니다.
+   */
+  useEffect(() => {
+    let cancelled = false
+    async function settle() {
+      try {
+        await ledger.adoptLegacyCounters()
+        const stuck = await ledger.minted(storeId, deviceId)
+        for (const row of stuck) {
+          if (cancelled) return
+          let order: Order | null
+          try {
+            order = await findOrder(row.orderId)
+          } catch {
+            return // 못 물어봤습니다. 다음 기회에 — 지우지 않습니다.
+          }
+          const accepted = order !== null
+            && order.tranNo === row.tranNo
+            && order.status !== 'PLACED'
+            && order.status !== 'REJECTED'
+            && order.status !== 'EXPIRED'
+          if (accepted && order) {
+            await ledger.confirm(row.id, buildTrSale(
+              order, row.storeId, row.deviceId, row.businessDate, row.tranNo, row.mintedAt))
+          } else {
+            await ledger.discard(row.id, '수락이 확인되지 않았습니다')
+          }
+        }
+      } catch {
+        // 로컬 원장을 못 쓰는 환경. 아래 전송도 조용히 0건이 됩니다.
+      }
+      if (!cancelled) await flush()
+    }
+    void settle()
+    // 배치입니다. 30초는 매출 분해 배치와 같은 주기라, 올린 것이
+    // 다음 분해에 곧바로 실립니다.
+    const timer = window.setInterval(() => void flush(), 30000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [storeId, deviceId, flush])
+
   async function openStore() {
     setBusinessDayBusy(true)
     setBusinessDayError(null)
@@ -175,8 +281,25 @@ function Pos({ deviceId, storeId, onForget }:
     }
   }
 
+  /**
+   * 마감은 <b>전송을 검증하는 지점</b>이기도 합니다 (umbrella docs/adr/0010).
+   *
+   * <p>전송이 비동기가 된 순간부터, 마감은 "오늘 장사 끝"만이 아니라
+   * "내 거래가 전부 올라갔는가"에도 답해야 합니다. 못 올린 채로 닫은
+   * 매장은 <b>다음 날 아침에</b> 금액이 안 맞는 것을 알게 됩니다.
+   *
+   * <p>그래서 먼저 올려 보고, 남으면 말합니다. 막지는 않습니다 —
+   * 서버가 죽어 있는데 매장을 못 닫게 하면 그게 더 나쁩니다. 남은
+   * 거래는 원장에 그대로 있고 다음에 올라갑니다.
+   */
   async function closeStore() {
-    if (!window.confirm(`${storeId}을(를) 마감할까요? 오늘 접수된 주문은 그대로 남고, 새 주문만 막힙니다.`)) return
+    const left = await flush()
+    const warning = left > 0
+      ? `\n\n아직 올리지 못한 거래가 ${left}건 있습니다. 마감해도 사라지지 않고, 연결이 돌아오면 올라갑니다.`
+      : ''
+    if (!window.confirm(
+      `${storeId}을(를) 마감할까요? 오늘 접수된 주문은 그대로 남고, 새 주문만 막힙니다.${warning}`
+    )) return
     setBusinessDayBusy(true)
     setBusinessDayError(null)
     try {
@@ -315,20 +438,39 @@ function Pos({ deviceId, storeId, onForget }:
   async function decide(order: Order, next: 'ACCEPTED' | 'REJECTED') {
     setBusyId(order.id)
     setError(null)
+    // 번호를 끊었다면 그 줄. 실패하면 이 줄을 비워야 합니다.
+    let minted: ledger.TranRow | null = null
     try {
       // 거래번호는 수락할 때 이 단말이 끊습니다 (umbrella docs/adr/0009).
       // 거절에는 붙이지 않습니다 — 거절은 매출이 아니고, 번호를 태우면
       // 영수증 번호가 구멍 난 채로 이어집니다.
-      const tranNo = next === 'ACCEPTED' && businessDay?.businessDate
-        ? nextTranNo(storeId, deviceId, businessDay.businessDate)
-        : undefined
-      const moved = await changeStatus(order.id, next, deviceId, tranNo)
+      //
+      // **번호와 거래가 한 트랜잭션에서 납니다** (docs/adr/0010). 예전에는
+      // localStorage 에 번호만 올렸는데, 그 직후에 브라우저가 죽으면
+      // 번호가 되돌아가 같은 번호가 두 번 올라갔습니다.
+      if (next === 'ACCEPTED' && businessDay?.businessDate) {
+        minted = await ledger.mint(storeId, deviceId, businessDay.businessDate, order.id)
+      }
+      const moved = await changeStatus(order.id, next, deviceId, minted?.tranNo)
+      if (minted) {
+        // 이제 거래입니다. 전문을 적어 두고 올릴 것으로 돌립니다 —
+        // 올리는 것은 이 자리에서 기다리지 않습니다. 손님이 서 있습니다.
+        await ledger.confirm(minted.id, buildTrSale(
+          moved, storeId, deviceId, minted.businessDate, minted.tranNo, minted.mintedAt))
+        setUnsent(await ledger.unsentCount(storeId, deviceId))
+        void flush()
+      }
       if (next === 'ACCEPTED') setReceipt(moved)
     } catch (e) {
       // Usually a 409: it expired, or another terminal took it first.
       // Either way this screen is now out of date, so refresh rather
       // than argue with the server about it.
-      setError(e instanceof Error ? e.message : '처리하지 못했습니다')
+      const reason = e instanceof Error ? e.message : '처리하지 못했습니다'
+      // 번호는 돌려주지 않습니다. 되돌리면 다음 거래가 같은 번호를
+      // 쓰는데, 그 사이에 이 번호가 이미 올라갔을 수 있습니다 —
+      // 영수증 번호의 구멍이 매출의 중복보다 낫습니다.
+      if (minted) await ledger.discard(minted.id, reason).catch(() => undefined)
+      setError(reason)
     } finally {
       setBusyId(null)
       await reload()
@@ -417,6 +559,18 @@ function Pos({ deviceId, storeId, onForget }:
         </div>
       )}
       {businessDayError && <div className="error" role="alert">{businessDayError}</div>}
+
+      {/* 미전송 건수는 화면에 있어야 합니다 (umbrella docs/adr/0010).
+          안 보이는 곳에서 차오르는 큐는 조용한 실패가 됩니다. */}
+      {unsent > 0 && (
+        <div className="warn" role="status">
+          아직 올리지 못한 거래 <strong>{unsent}건</strong>이 이 단말에 남아 있습니다.
+          매출은 사라지지 않고, 연결이 돌아오면 30초 안에 올라갑니다.
+          {uploadError && <> 마지막 사유: {uploadError}.</>}
+          {' '}
+          <button className="btn link" onClick={() => void flush()}>지금 올리기</button>
+        </div>
+      )}
 
       {soldOut.length > 0 && (
         <div className="warn" role="status">
@@ -624,6 +778,22 @@ function Pos({ deviceId, storeId, onForget }:
  */
 function Receipt({ order, deviceId, onClose }:
   { order: Order; deviceId: string; onClose: () => void }) {
+  // 주문 QR. 값이 없는 주문(2026-09-24 이전)에는 안 그립니다 — 빈
+  // 네모가 찍힌 영수증은 고장으로 읽힙니다.
+  const [qr, setQr] = useState<string | null>(null)
+  useEffect(() => {
+    if (!order.claimToken) {
+      setQr(null)
+      return
+    }
+    let alive = true
+    drawClaimQr(order.claimToken)
+      .then((url) => { if (alive) setQr(url) })
+      // 못 그려도 영수증은 나갑니다. QR은 덤이고, 수령번호가 본체입니다.
+      .catch(() => { if (alive) setQr(null) })
+    return () => { alive = false }
+  }, [order.claimToken])
+
   return (
     <div className="sheet-backdrop" role="dialog" aria-modal="true">
       <div className="sheet receipt">
@@ -659,6 +829,16 @@ function Receipt({ order, deviceId, onClose }:
             {order.pickupNo && <><dt>수령번호</dt><dd className="strong">{order.pickupNo}</dd></>}
             {order.qrCode && <><dt>QR번호</dt><dd className="mono">{order.qrCode}</dd></>}
           </dl>
+          {/* 주문 QR (umbrella docs/adr/0007). 손님이 찍으면 자기 주문
+              상태가 열립니다 — 로그인도 회원번호도 필요 없습니다.
+              주소를 글자로도 적지 않습니다: 128비트 난수라 사람이 옮겨
+              칠 수 있는 값이 아니고, 적어 두면 종이만 길어집니다. */}
+          {qr && (
+            <div className="receipt-qr">
+              <img src={qr} alt="주문 상태 조회 QR" width={120} height={120} />
+              <p>주문 상태를 보려면 QR을 찍으세요</p>
+            </div>
+          )}
           <p className="receipt-foot">주문 #{order.id} · {formatTime(order.placedAt)}</p>
         </div>
         <div className="row no-print">

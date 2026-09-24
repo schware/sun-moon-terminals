@@ -331,3 +331,21 @@ footer {
   .sheet { border: 0; padding: 0; width: auto; background: none; }
   .receipt-paper { border-radius: 0; }
 }
+
+/* 영수증의 주문 QR (umbrella docs/adr/0007). 인쇄에 같이 나갑니다 —
+   화면에서만 보이면 손님은 못 가져갑니다. */
+.receipt-qr {
+  text-align: center;
+  margin: 10px 0 4px;
+}
+.receipt-qr img {
+  display: inline-block;
+  /* 영수증 프린터는 흑백이고 배경이 종이입니다. 흰 바탕을 명시해야
+     화면의 어두운 테마가 그대로 인쇄되는 일이 없습니다. */
+  background: #fff;
+}
+.receipt-qr p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #444;
+}

@@ -86,6 +86,20 @@ export interface Order {
   /** 이 주문이 들어온 테이블 QR의 코드. 키의 일부가 아니라 영수증에 함께 찍히는 값입니다. */
   qrCode: string | null
   /**
+   * 영수증 QR이 나르는 값 (umbrella docs/adr/0007).
+   *
+   * 손님이 이걸 찍으면 로그인 없이 자기 주문 상태를 봅니다. 위의
+   * `qrCode`(테이블 스티커)와 **다른 것**입니다 — 저쪽은 자리를
+   * 가리키고 영원히 붙어 있고, 이쪽은 주문 한 건을 가리킵니다.
+   *
+   * 주문이 생길 때 정해지고 끝까지 안 바뀝니다. 손님은 종이 한 장을
+   * 들고 있어서, 상태가 바뀔 때마다 값이 바뀌면 그 종이가 쓸모없어집니다.
+   *
+   * 2026-09-24 이전 주문에는 없습니다(null). 그 경우 영수증에 QR을
+   * 안 그립니다 — 빈 네모는 고장으로 읽힙니다.
+   */
+  claimToken: string | null
+  /**
    * POS가 이 주문을 받아 저장한 시각. **상태가 아닙니다** — 주문이
    * 어느 단계인지가 아니라 전달이 됐는지입니다. 비어 있으면 POS가
    * 아직 못 받은 것입니다.
@@ -381,6 +395,48 @@ export async function reportReceived(orderId: number, deviceId: string): Promise
     // 기록이 빠지면 나중에 "POS가 못 받았다"로 보일 뿐, 주문 처리에는
     // 영향이 없습니다.
   }
+}
+
+/** 서버가 받아 준 결과. 이미 받은 것은 <b>실패가 아닙니다</b>. */
+export interface SaleUploadResult {
+  received: number
+  duplicates: number
+}
+
+/**
+ * 밀린 거래를 한 번에 올립니다 (업무 정의서 §3.1, umbrella docs/adr/0010).
+ *
+ * <p>배열로 보냅니다 — 로컬 원장이 쌓아 둔 것을 건마다 왕복하면
+ * 느리고, 서버가 애초에 배열을 받도록 만들어져 있습니다.
+ *
+ * <p>이미 받은 거래를 다시 보내도 서버는 `duplicates` 로 셀 뿐
+ * 오류를 내지 않습니다. 그래서 <b>재시도가 안전합니다</b> — 올렸는지
+ * 확신이 없으면 그냥 다시 보내면 됩니다.
+ */
+export async function uploadSales(payloads: unknown[]): Promise<SaleUploadResult> {
+  const res = await fetch(`${BASE}/sales`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloads)
+  })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as SaleUploadResult
+}
+
+/**
+ * 주문 하나를 번호로 찾습니다.
+ *
+ * <p>시작할 때 <b>번호만 끊고 끊긴</b> 거래를 정리하는 데 씁니다
+ * (`ledger.reconcile`). 서버에 그 주문이 이 번호로 수락돼 있는지가
+ * 유일한 답입니다.
+ *
+ * <p>목록을 받아서 고릅니다 — {@code GET /orders} 에 단건 조회가
+ * 없습니다. 시작할 때 한 번이고 화면이 어차피 같은 목록을 읽으므로
+ * 그것 때문에 서버에 주소를 하나 더 낼 이유는 없습니다.
+ */
+export async function findOrder(orderId: number): Promise<Order | null> {
+  const all = await fetchOrders()
+  return all.find((o) => o.id === orderId) ?? null
 }
 
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
