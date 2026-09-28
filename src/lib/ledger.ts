@@ -59,6 +59,52 @@ export interface TranRow {
   lastError: string | null
 }
 
+/**
+ * 셸(sun-moon-store-app)의 SQLite 원장 (store-app.md §6.1, ADR-0010 2단계).
+ *
+ * <p>있으면 그것을, 없으면(브라우저) 아래의 IndexedDB 를 씁니다. 함수 이름과 규칙이
+ * 같아서 화면 코드는 어느 쪽인지 모릅니다. 셸의 원장은 브라우저 데이터를 지워도 남습니다.
+ *
+ * <p>셸에서 처음 쓸 때 <b>이 출처의 IndexedDB 에 있던 것을 한 번 옮깁니다</b>(카운터는 큰 쪽).
+ * IndexedDB 는 출처마다 따로라, 브라우저에서 쓰던 웹 POS 의 원장은 셸에서 보이지 않습니다 —
+ * 웹 POS 를 셸로 바꾸는 것은 <b>마감 뒤</b>에 하십시오. 번호가 판매일자마다 1부터라, 그러면
+ * 겹칠 번호가 없습니다.
+ */
+interface ShellLedger {
+  mint(storeId: string, deviceId: string, businessDate: string, orderId: number): Promise<TranRow>
+  confirm(id: string, payload: unknown): Promise<void>
+  discard(id: string, reason: string): Promise<void>
+  pending(): Promise<TranRow[]>
+  unsentCount(): Promise<number>
+  markSent(ids: string[]): Promise<void>
+  markFailed(ids: string[], reason: string): Promise<void>
+  minted(): Promise<TranRow[]>
+  migrated(): Promise<boolean>
+  importRows(counters: Array<{ key: string; last: number }>, trans: TranRow[]): Promise<unknown>
+}
+
+let migration: Promise<void> | null = null
+
+/** 셸이면 (한 번 옮긴 뒤) 셸의 원장. 브라우저면 undefined. */
+async function shell(): Promise<ShellLedger | undefined> {
+  const ledger = (window as unknown as { sunmoon?: { ledger?: ShellLedger } }).sunmoon?.ledger
+  if (!ledger) return undefined
+  migration ??= (async () => {
+    if (await ledger.migrated()) return
+    const db = await open()
+    try {
+      const tx = db.transaction([COUNTER, TRAN], 'readonly')
+      const counters = await ask<Array<{ key: string; last: number }>>(tx.objectStore(COUNTER).getAll())
+      const trans = await ask<TranRow[]>(tx.objectStore(TRAN).getAll())
+      await ledger.importRows(counters, trans)
+    } finally {
+      db.close()
+    }
+  })()
+  await migration
+  return ledger
+}
+
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -116,6 +162,8 @@ export function tranId(
 export async function mint(
   storeId: string, deviceId: string, businessDate: string, orderId: number
 ): Promise<TranRow> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.mint(storeId, deviceId, businessDate, orderId)
   const db = await open()
   try {
     const tx = db.transaction([COUNTER, TRAN], 'readwrite')
@@ -163,7 +211,9 @@ async function patch(id: string, change: (row: TranRow) => TranRow): Promise<voi
 }
 
 /** 수락이 확인됐습니다 — 이제 올릴 것이 됩니다. */
-export function confirm(id: string, payload: unknown): Promise<void> {
+export async function confirm(id: string, payload: unknown): Promise<void> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.confirm(id, payload)
   return patch(id, (row) => ({ ...row, state: 'PENDING', payload }))
 }
 
@@ -173,7 +223,9 @@ export function confirm(id: string, payload: unknown): Promise<void> {
  * 같은 번호를 쓰게 되는데, 그 사이에 이 번호가 이미 올라갔을 수
  * 있습니다. 구멍이 중복보다 낫습니다.
  */
-export function discard(id: string, reason: string): Promise<void> {
+export async function discard(id: string, reason: string): Promise<void> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.discard(id, reason)
   return patch(id, (row) => ({ ...row, state: 'VOID', lastError: reason }))
 }
 
@@ -191,6 +243,8 @@ async function byState(state: TranState): Promise<TranRow[]> {
 
 /** 아직 못 올린 것들. 오래된 것부터 — 순서대로 올라가는 편이 읽기 쉽습니다. */
 export async function pending(storeId: string, deviceId: string): Promise<TranRow[]> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.pending()
   const rows = await byState('PENDING')
   return rows
     .filter((r) => r.storeId === storeId && r.deviceId === deviceId)
@@ -198,10 +252,14 @@ export async function pending(storeId: string, deviceId: string): Promise<TranRo
 }
 
 export async function unsentCount(storeId: string, deviceId: string): Promise<number> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.unsentCount()
   return (await pending(storeId, deviceId)).length
 }
 
 export async function markSent(ids: string[]): Promise<void> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.markSent(ids)
   const now = new Date().toISOString()
   for (const id of ids) {
     await patch(id, (row) => ({ ...row, state: 'SENT', sentAt: now, lastError: null }))
@@ -209,6 +267,8 @@ export async function markSent(ids: string[]): Promise<void> {
 }
 
 export async function markFailed(ids: string[], reason: string): Promise<void> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.markFailed(ids, reason)
   for (const id of ids) {
     await patch(id, (row) => ({ ...row, attempts: row.attempts + 1, lastError: reason }))
   }
@@ -226,6 +286,8 @@ export async function markFailed(ids: string[], reason: string): Promise<void> {
  * 모르는 채로 지우는 것이 제일 나쁩니다.
  */
 export async function minted(storeId: string, deviceId: string): Promise<TranRow[]> {
+  const viaShell = await shell()
+  if (viaShell) return viaShell.minted()
   const rows = await byState('MINTED')
   return rows.filter((r) => r.storeId === storeId && r.deviceId === deviceId)
 }
@@ -238,6 +300,8 @@ export async function minted(storeId: string, deviceId: string): Promise<TranRow
  * 다음에 어느 쪽이 맞는지 알 수 없습니다.
  */
 export async function adoptLegacyCounters(): Promise<number> {
+  // 셸에는 localStorage 채번 시절이 없었습니다(그 시절은 브라우저의 일).
+  if (await shell()) return 0
   const prefix = 'tranNo:'
   const keys: string[] = []
   for (let i = 0; i < localStorage.length; i++) {
