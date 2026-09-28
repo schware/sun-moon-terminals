@@ -14,9 +14,10 @@
 // The default is the public address on purpose — see sun-moon-terminal-pos's
 // README for why a LAN default is the wrong default for a screen opened
 // from the :8000 hub's public link.
-import { deviceToken, withDeviceAuth } from './pairing'
+import { deviceToken, shellServerUrl, withDeviceAuth } from './pairing'
 
-export const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
+// 셸(Electron) 안이면 셸이 페어링한 서버 주소가 먼저입니다 (store-app.md §5.2).
+export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
 
 /** 페어링된 기기면 토큰을 붙여 부릅니다 (store-app.md §3). 아니면 예전 그대로. */
 function dsFetch(url: string, init?: RequestInit): Promise<Response> {
