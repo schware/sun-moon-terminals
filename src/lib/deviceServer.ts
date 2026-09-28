@@ -233,6 +233,38 @@ export async function fetchKdsMode(storeId: string): Promise<KdsMode> {
   return (await res.json()) as KdsMode
 }
 
+/** 라벨 작업 하나 (store-app.md §7). content 는 만든 순간 고정 — 재출력은 이걸 복사합니다. */
+export interface PrintJob {
+  id: number
+  orderId: number
+  lineSeq: number | null
+  unitNo: number | null
+  unitTotal: number | null
+  copyNo: number
+  originalId: number | null
+  status: 'QUEUED' | 'PRINTED' | 'FAILED'
+  error: string | null
+  content: { menuName?: string | null; pickupNo?: string | null }
+}
+
+export async function fetchPrintJobs(orderId: number): Promise<PrintJob[]> {
+  const res = await dsFetch(`${BASE}/pos/print-jobs?orderId=${orderId}`)
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as PrintJob[]
+}
+
+/** 라벨 다시 — 서버가 새 작업을 만들고 이 KDS-MAIN 에 PRINT 로 알립니다. */
+export async function reprintLabel(jobId: number): Promise<PrintJob> {
+  const res = await dsFetch(`${BASE}/pos/print-jobs/reprint?id=${jobId}`, { method: 'POST' })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as PrintJob
+}
+
+/** 이 프레임이 라벨을 찍으라는 것인가. */
+export function isPrintEvent(event?: TerminalEvent): boolean {
+  return event?.type === 'PRINT'
+}
+
 /** The "Get" half: the WebSocket only says something changed, this asks what is true. */
 export async function fetchOrders(status?: OrderStatus): Promise<Order[]> {
   const res = await dsFetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
@@ -269,8 +301,10 @@ export interface TerminalEvent {
   orderId?: number
   status?: string
   storeId?: string
-  /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' — 주문 이벤트에는 없습니다. */
+  /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' | 'PRINT' — 주문 이벤트에는 없습니다. */
   type?: string
+  /** PRINT 프레임: 찍을 라벨 작업들 (store-app.md §7.2). */
+  jobIds?: number[]
   menuCode?: string
   businessDate?: string
 }

@@ -285,3 +285,7 @@ footer {
    조리 대기(테두리 기본)와 수령 대기(초록)의 가운데입니다. 색이 셋이면
    주방이 화면을 읽지 않고 훑기만 해도 어느 칸이 자기 일인지 압니다. */
 .card.cooking { border-color: rgba(255, 176, 32, 0.45); }
+
+/* 라벨 다시 (store-app.md §7.3) */
+.label-list { list-style: none; padding: 0; margin: 8px 0 16px; display: grid; gap: 8px; }
+.label-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }

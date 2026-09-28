@@ -4,7 +4,11 @@ import {
   changeStatus,
   fetchBusinessDayStatus,
   fetchKdsMode,
+  fetchPrintJobs,
   forceProduced,
+  isPrintEvent,
+  reprintLabel,
+  type PrintJob,
   startLines,
   type KdsMode,
   fetchMenuBoard,
@@ -83,6 +87,20 @@ function pendingKitchens(order: Order): string[] {
 
 /** 이 주방이 자기 줄을 다 끝냈는가 — 옆 주방을 기다리는 중인지 알려면 필요합니다. */
 /** 내 줄 중 하나라도 조리를 시작했나. 옆 주방이 시작한 주문도 내 것은 아직 대기일 수 있습니다. */
+/**
+ * 셸(SunMoon Store)의 라벨 프린터 — KDS-MAIN 으로 페어링된 셸에만 있습니다 (store-app.md §7).
+ * 어디로 찍을지는 셸이 BO 장비 목록에서 정하고, 화면은 작업 번호만 넘깁니다.
+ */
+interface ShellLabelPrinter {
+  label: (jobId: number) => Promise<{ ok: boolean; error?: string }>
+  queuedLabels: () => Promise<{ printed: number; failed: number }>
+}
+
+function shellLabelPrinter(): ShellLabelPrinter | undefined {
+  const printer = (window as unknown as { sunmoon?: { printer?: Partial<ShellLabelPrinter> } }).sunmoon?.printer
+  return printer?.label && printer.queuedLabels ? printer as ShellLabelPrinter : undefined
+}
+
 function myLinesStarted(order: Order, deviceId: string): boolean {
   return order.lines.some((l) => lineBelongsTo(l, deviceId) && (l.startedAt || l.producedAt))
 }
@@ -177,6 +195,40 @@ function Kds({ deviceId, storeId, role, onForget }:
   // 방금 다시 부른 주문. 버튼이 잠깐 "불렀습니다"로 바뀝니다.
   const [recalled, setRecalled] = useState<number | null>(null)
 
+  // 라벨 (§7). 셸 밖(웹 KDS)에는 프린터가 없습니다 — 버튼도 없습니다.
+  const [labelError, setLabelError] = useState<string | null>(null)
+  const [labelsFor, setLabelsFor] = useState<Order | null>(null)
+  const [labelJobs, setLabelJobs] = useState<PrintJob[]>([])
+  const canPrintLabels = isMain && shellLabelPrinter() !== undefined
+
+  // 꺼져 있던 동안 쌓인 라벨 — 켜질 때 한 번 (§7.2).
+  useEffect(() => {
+    const printer = shellLabelPrinter()
+    if (!isMain || !printer) return
+    void printer.queuedLabels().then((r) => {
+      if (r.failed > 0) setLabelError(`쌓여 있던 라벨 ${r.failed}장을 찍지 못했습니다 — 프린터를 확인하십시오`)
+    })
+  }, [isMain])
+
+  async function openLabels(order: Order) {
+    setLabelsFor(order)
+    setLabelJobs([])
+    try {
+      setLabelJobs(await fetchPrintJobs(order.id))
+    } catch (e) {
+      setLabelError(e instanceof Error ? e.message : '라벨 작업을 읽지 못했습니다')
+    }
+  }
+
+  async function reprint(job: PrintJob) {
+    try {
+      await reprintLabel(job.id)
+      if (labelsFor) setLabelJobs(await fetchPrintJobs(labelsFor.id))
+    } catch (e) {
+      setLabelError(e instanceof Error ? e.message : '다시 찍지 못했습니다')
+    }
+  }
+
   /**
    * 비상 모드 (store-app.md §4.2) — MAIN 이 3분 넘게 끊기면 SUB 가 대신 수령합니다.
    *
@@ -227,6 +279,19 @@ function Kds({ deviceId, storeId, role, onForget }:
   // 프레임 하나에 두 가지가 옵니다 — 결품이면 메뉴판만, 그 밖이면
   // 주문만 다시 읽습니다. 못 읽은 프레임이면 둘 다입니다.
   const onEvent = useCallback((event?: TerminalEvent) => {
+    // 라벨 (store-app.md §7.2) — 셸의 KDS-MAIN 만 찍습니다. 주문 목록은 다시 읽지 않습니다.
+    if (isPrintEvent(event)) {
+      const printer = shellLabelPrinter()
+      if (printer) {
+        void (async () => {
+          for (const id of event?.jobIds ?? []) {
+            const result = await printer.label(id)
+            if (!result.ok) setLabelError(result.error ?? '라벨을 찍지 못했습니다')
+          }
+        })()
+      }
+      return
+    }
     if (event === undefined) {
       void reload()
       void loadMenus()
@@ -489,6 +554,12 @@ function Kds({ deviceId, storeId, role, onForget }:
         </div>
       )}
       {error && <div className="error" role="alert">{error}</div>}
+      {labelError && (
+        <div className="error" role="alert">
+          라벨: {labelError}{' '}
+          <button className="btn link" onClick={() => setLabelError(null)}>닫기</button>
+        </div>
+      )}
 
       <section>
         <h2>
@@ -617,6 +688,15 @@ function Kds({ deviceId, storeId, role, onForget }:
                   >
                     수령 확인
                   </button>
+                  {canPrintLabels && (
+                    <button
+                      className="btn"
+                      onClick={() => void openLabels(order)}
+                      title="라벨을 다시 찍습니다 — 처음과 같은 내용에 '재출력' 이 붙습니다"
+                    >
+                      라벨 다시
+                    </button>
+                  )}
                   {isMain && (
                     <button
                       className="btn recall"
@@ -633,6 +713,36 @@ function Kds({ deviceId, storeId, role, onForget }:
           </div>
         )}
       </section>
+      )}
+
+      {labelsFor && (
+        <div className="sheet-backdrop" role="dialog" aria-modal="true">
+          <div className="sheet">
+            <h3>{labelsFor.pickupNo ?? `#${labelsFor.id}`} 라벨</h3>
+            {labelJobs.length === 0 ? (
+              <p className="muted">이 주문의 라벨 작업이 없습니다 (라벨 프린터가 없는 매장이거나 아직 완료 전).</p>
+            ) : (
+              <ul className="label-list">
+                {labelJobs.filter((j) => j.copyNo === 0).map((j) => {
+                  const copies = labelJobs.filter((c) => c.originalId === j.id).length
+                  return (
+                    <li key={j.id}>
+                      <span>
+                        {j.content.menuName ?? ''} {j.unitTotal && j.unitTotal > 1 ? `${j.unitNo}/${j.unitTotal}` : ''}
+                        {' · '}{j.status === 'PRINTED' ? '찍힘' : j.status === 'FAILED' ? `실패 (${j.error ?? ''})` : '대기'}
+                        {copies > 0 && ` · 재출력 ${copies}`}
+                      </span>
+                      <button className="btn" onClick={() => void reprint(j)}>다시</button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            <div className="row">
+              <button className="btn" onClick={() => setLabelsFor(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {handingOver && (
