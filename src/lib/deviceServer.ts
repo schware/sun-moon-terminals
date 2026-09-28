@@ -57,6 +57,8 @@ export interface OrderLine {
    * 반만 만들어진 주문을 받으러 옵니다.
    */
   producedAt: string | null
+  /** 이 줄의 조리를 시작한 시각 (store-app.md §4.1). 옛 주문에는 없습니다. */
+  startedAt?: string | null
 }
 
 /**
@@ -80,6 +82,10 @@ export function lineBelongsTo(line: OrderLine, deviceId: string): boolean {
 export interface Order {
   id: number
   storeId: string
+  /** KDS-MAIN 이 남은 줄을 강제로 끝냈으면 그 기기 (§4.1). */
+  forceProducedBy?: string | null
+  /** MAIN 이 끊긴 동안 SUB 가 내준 수령인가 (§4.2). */
+  pickupEmergency?: boolean
   customerId: string
   menuName: string
   amount: number
@@ -195,6 +201,35 @@ async function failure(res: Response): Promise<Error> {
   if (res.status === 409) return new Error('이미 처리된 주문입니다')
   if (res.status === 502) return new Error('주문 서비스에 연결할 수 없습니다')
   return new Error(`요청이 실패했습니다 (HTTP ${res.status})`)
+}
+
+/** 그 주방의 줄만 조리 시작 (store-app.md §4.1). 주문은 한 줄이라도 시작되면 조리 중. */
+export async function startLines(orderId: number, deviceId: string): Promise<Order> {
+  const params = new URLSearchParams({ id: String(orderId), deviceId })
+  const res = await dsFetch(`${BASE}/orders/start?${params}`, { method: 'POST' })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as Order
+}
+
+/** KDS-MAIN 의 강제 전부 완료. 누가 눌렀는지 주문에 남습니다. 서버가 역할을 확인합니다. */
+export async function forceProduced(orderId: number, deviceId: string): Promise<Order> {
+  const params = new URLSearchParams({ id: String(orderId), deviceId })
+  const res = await dsFetch(`${BASE}/orders/force-produced?${params}`, { method: 'POST' })
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as Order
+}
+
+export interface KdsMode {
+  storeId: string
+  /** 그 매장의 KDS-MAIN 이 3분 넘게 안 붙어 있음 — SUB 가 대신 수령할 수 있음. */
+  emergency: boolean
+  since: string | null
+}
+
+export async function fetchKdsMode(storeId: string): Promise<KdsMode> {
+  const res = await dsFetch(`${BASE}/kds/mode?storeId=${encodeURIComponent(storeId)}`)
+  if (!res.ok) throw await failure(res)
+  return (await res.json()) as KdsMode
 }
 
 /** The "Get" half: the WebSocket only says something changed, this asks what is true. */

@@ -3,6 +3,10 @@ import {
   BASE,
   changeStatus,
   fetchBusinessDayStatus,
+  fetchKdsMode,
+  forceProduced,
+  startLines,
+  type KdsMode,
   fetchMenuBoard,
   fetchOrders,
   formatAmount,
@@ -78,6 +82,11 @@ function pendingKitchens(order: Order): string[] {
 }
 
 /** 이 주방이 자기 줄을 다 끝냈는가 — 옆 주방을 기다리는 중인지 알려면 필요합니다. */
+/** 내 줄 중 하나라도 조리를 시작했나. 옆 주방이 시작한 주문도 내 것은 아직 대기일 수 있습니다. */
+function myLinesStarted(order: Order, deviceId: string): boolean {
+  return order.lines.some((l) => lineBelongsTo(l, deviceId) && (l.startedAt || l.producedAt))
+}
+
 function myLinesDone(order: Order, deviceId: string): boolean {
   const mineLines = order.lines.filter((l) => lineBelongsTo(l, deviceId))
   return mineLines.length > 0 && mineLines.every((l) => l.producedAt !== null)
@@ -167,6 +176,23 @@ function Kds({ deviceId, storeId, role, onForget }:
   const [pinError, setPinError] = useState<string | null>(null)
   // 방금 다시 부른 주문. 버튼이 잠깐 "불렀습니다"로 바뀝니다.
   const [recalled, setRecalled] = useState<number | null>(null)
+
+  /**
+   * 비상 모드 (store-app.md §4.2) — MAIN 이 3분 넘게 끊기면 SUB 가 대신 수령합니다.
+   *
+   * <b>페어링된 SUB 만</b> 묻습니다. 페어링 전 매장은 MAIN 도 토큰이 없어서 서버가
+   * "MAIN 이 없다" 고 보고, 그대로 띄우면 모든 SUB 에 수령 칸이 생깁니다.
+   */
+  const [kdsMode, setKdsMode] = useState<KdsMode | null>(null)
+  const askMode = !isMain && pairedDevice() !== null
+  useEffect(() => {
+    if (!askMode) return
+    const read = () => { fetchKdsMode(storeId).then(setKdsMode).catch(() => { /* 모르면 예전 그대로 */ }) }
+    read()
+    const timer = window.setInterval(read, 15000)
+    return () => window.clearInterval(timer)
+  }, [askMode, storeId])
+  const emergency = askMode && kdsMode?.emergency === true
 
   const reload = useCallback(async () => {
     try {
@@ -283,8 +309,12 @@ function Kds({ deviceId, storeId, role, onForget }:
 
   /** 조리 대기 — 매장이 받았지만 주방이 아직 안 집은 주문. */
   const waiting = useMemo(
-    () => orders.filter((o) => mine(o) && o.status === 'ACCEPTED'),
-    [orders, mine]
+    () => orders.filter((o) => mine(o) && (o.status === 'ACCEPTED'
+      // 조리 시작은 줄 단위입니다 (§4.1). 옆 주방이 시작해서 주문은 조리 중이어도
+      // 내 줄은 아직 대기입니다.
+      || (!isMain && o.status === 'COOKING' && o.lines.length > 0
+        && !myLinesStarted(o, deviceId) && !myLinesDone(o, deviceId)))),
+    [orders, mine, isMain, deviceId]
   )
 
   /**
@@ -295,8 +325,9 @@ function Kds({ deviceId, storeId, role, onForget }:
    * 답이 아닙니다.
    */
   const cooking = useMemo(
-    () => orders.filter((o) => mine(o) && o.status === 'COOKING'),
-    [orders, mine]
+    () => orders.filter((o) => mine(o) && o.status === 'COOKING'
+      && (isMain || o.lines.length === 0 || myLinesStarted(o, deviceId) || myLinesDone(o, deviceId))),
+    [orders, mine, isMain, deviceId]
   )
 
   /**
@@ -372,7 +403,8 @@ function Kds({ deviceId, storeId, role, onForget }:
     setBusyId(order.id)
     setError(null)
     try {
-      await changeStatus(order.id, 'COOKING', deviceId)
+      // 내 줄만 시작합니다 — 옆 주방 화면의 그 주문은 대기로 남습니다 (§4.1).
+      await startLines(order.id, deviceId)
     } catch (e) {
       // 대개 409: 같은 주방의 다른 화면이 먼저 집었습니다. 어느 쪽이든
       // 이 화면이 낡은 것이므로 서버와 다투지 말고 다시 읽습니다.
@@ -384,10 +416,17 @@ function Kds({ deviceId, storeId, role, onForget }:
   }
 
   async function complete(order: Order) {
+    // 메인의 "전부 조리완료" 는 남은 줄을 강제로 끝냅니다 (§4.1). 생산 주방이 끝낸
+    // 것과 기록이 갈리므로, 누르기 전에 무엇을 하는지 말합니다.
+    if (isMain && !order.lines.every((l) => l.producedAt)
+        && !window.confirm('아직 안 끝난 줄까지 전부 완료로 적습니다. 누가 눌렀는지 주문에 남습니다.')) {
+      return
+    }
     setBusyId(order.id)
     setError(null)
     try {
-      await changeStatus(order.id, 'PRODUCED', deviceId)
+      if (isMain) await forceProduced(order.id, deviceId)
+      else await changeStatus(order.id, 'PRODUCED', deviceId)
     } catch (e) {
       // Usually a 409: another KDS screen in the same kitchen got there
       // first. Either way this screen is now out of date, so refresh
@@ -543,7 +582,14 @@ function Kds({ deviceId, storeId, role, onForget }:
         하는데, 생산 주방은 자기 것밖에 모릅니다. 짜장면을 만든 주방이
         초밥이 나왔는지 모르는 채로 내주면 손님은 반만 받아 갑니다.
       */}
-      {isMain && (
+      {emergency && (
+        <div className="warn" role="status">
+          <strong>KDS-MAIN 이 끊겨 있습니다</strong>
+          {kdsMode?.since && <> ({formatTime(kdsMode.since)} 부터)</>}. 그동안 여기서 수령할 수
+          있고, 수령은 <strong>비상 수령</strong>으로 기록됩니다. MAIN 이 돌아오면 이 칸은 사라집니다.
+        </div>
+      )}
+      {(isMain || emergency) && (
       <section>
         <h2>
           수령 대기
@@ -571,14 +617,16 @@ function Kds({ deviceId, storeId, role, onForget }:
                   >
                     수령 확인
                   </button>
-                  <button
-                    className="btn recall"
-                    disabled={busyId === order.id}
-                    onClick={() => void callAgain(order)}
-                    title="DID에 이 번호를 다시 띄웁니다"
-                  >
-                    {recalled === order.id ? '불렀습니다' : '다시 부르기'}
-                  </button>
+                  {isMain && (
+                    <button
+                      className="btn recall"
+                      disabled={busyId === order.id}
+                      onClick={() => void callAgain(order)}
+                      title="DID에 이 번호를 다시 띄웁니다"
+                    >
+                      {recalled === order.id ? '불렀습니다' : '다시 부르기'}
+                    </button>
+                  )}
                 </div>
               </article>
             ))}
