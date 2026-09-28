@@ -24,7 +24,7 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
-import { forgetPairing, pairWithCode, pairedDevice, remember, type PairedDevice } from './lib/pairing'
+import { forgetPairing, inShell, pairWithCode, pairedDevice, remember, type PairedDevice } from './lib/pairing'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /** How often to re-ask which 판매일자 this store is on. Same cadence as POS. */
@@ -765,6 +765,13 @@ function TerminalPrompt({ onChosen, onPaired }: {
       const { device, token } = await pairWithCode(BASE, code)
       if (device.deviceType !== 'KDS') {
         setPairError(`이 코드는 ${device.deviceType} 용입니다. BO 에서 KDS 장비의 코드를 새로 받으십시오.`)
+        return
+      }
+      // KDS-MAIN 은 셸(SunMoon Store 앱)에서만 (store-app.md §3.6). 라벨 프린터와 주방의
+      // 명령이 그 기기에 있어야 해서입니다. 코드는 이미 쓰였으므로 새로 받아야 합니다.
+      if (device.kdsRole === 'MAIN' && !inShell()) {
+        setPairError('이 기기는 KDS-MAIN 입니다. SunMoon Store 앱에서 페어링하십시오 '
+          + '(이 코드는 이미 쓰였습니다 — BO 에서 새로 받으십시오).')
         return
       }
       remember(device, token)
