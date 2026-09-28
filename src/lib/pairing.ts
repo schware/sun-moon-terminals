@@ -22,6 +22,34 @@ export interface PairedDevice {
 const TOKEN_KEY = 'sunmoon.deviceToken'
 const DEVICE_KEY = 'sunmoon.device'
 
+/**
+ * Electron 셸(sun-moon-store-app) 안이면 셸이 신원을 줍니다 (store-app.md §5.2).
+ * 셸은 페어링을 자기 화면에서 하고 토큰을 암호화해 둡니다 — 화면은 받아 쓰기만 합니다.
+ * 셸 밖(브라우저)이면 undefined 이고, 아래의 localStorage 방식 그대로입니다.
+ */
+interface ShellIdentity extends PairedDevice {
+  token: string
+  serverUrl: string
+}
+
+interface ShellBridge {
+  identity: { get: () => ShellIdentity | null; forget: () => Promise<boolean> }
+}
+
+function shell(): ShellBridge | undefined {
+  return (window as unknown as { sunmoon?: ShellBridge }).sunmoon
+}
+
+/** 셸 안에서 돌고 있나. 셸 밖에서는 KDS-MAIN 이 될 수 없습니다(§3.6). */
+export function inShell(): boolean {
+  return shell() !== undefined
+}
+
+/** 셸이 알려준 서버 주소. 셸 밖이면 null — 빌드 때 정한 주소를 씁니다. */
+export function shellServerUrl(): string | null {
+  return shell()?.identity.get()?.serverUrl ?? null
+}
+
 function read(key: string): string | null {
   try {
     return localStorage.getItem(key)
@@ -31,10 +59,17 @@ function read(key: string): string | null {
 }
 
 export function deviceToken(): string | null {
+  const fromShell = shell()?.identity.get()
+  if (fromShell) return fromShell.token
   return read(TOKEN_KEY)
 }
 
 export function pairedDevice(): PairedDevice | null {
+  const fromShell = shell()?.identity.get()
+  if (fromShell) {
+    const { storeId, deviceId, deviceType, kdsRole } = fromShell
+    return { storeId, deviceId, deviceType, kdsRole }
+  }
   const raw = read(DEVICE_KEY)
   if (!raw || !deviceToken()) return null
   try {
@@ -50,6 +85,12 @@ export function remember(device: PairedDevice, token: string): void {
 }
 
 export function forgetPairing(): void {
+  const bridge = shell()
+  if (bridge) {
+    // 셸이 설정을 지우고 셋업 화면으로 갑니다.
+    void bridge.identity.forget()
+    return
+  }
   try {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(DEVICE_KEY)
