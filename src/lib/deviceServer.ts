@@ -14,7 +14,14 @@
 // The default is the public address on purpose — see sun-moon-terminal-pos's
 // README for why a LAN default is the wrong default for a screen opened
 // from the :8000 hub's public link.
-const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
+import { deviceToken, withDeviceAuth } from './pairing'
+
+export const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
+
+/** 페어링된 기기면 토큰을 붙여 부릅니다 (store-app.md §3). 아니면 예전 그대로. */
+function dsFetch(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, withDeviceAuth(init))
+}
 
 export type OrderStatus =
   | 'PLACED'
@@ -132,7 +139,7 @@ export interface BusinessDayStatus {
  * one keeps its own 영업일자 — a food court does not close as a unit.
  */
 export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessDayStatus> {
-  const res = await fetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
+  const res = await dsFetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as BusinessDayStatus
 }
@@ -162,7 +169,7 @@ async function failure(res: Response): Promise<Error> {
 
 /** The "Get" half: the WebSocket only says something changed, this asks what is true. */
 export async function fetchOrders(status?: OrderStatus): Promise<Order[]> {
-  const res = await fetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
+  const res = await dsFetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order[]
 }
@@ -180,7 +187,7 @@ export async function changeStatus(
   const params = new URLSearchParams({ id: String(orderId), status })
   if (deviceId) params.set('deviceId', deviceId)
 
-  const res = await fetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
+  const res = await dsFetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
@@ -240,15 +247,18 @@ export interface MenuBoard {
  * 주소를 하나만 압니다.
  */
 export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
-  const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
+  const res = await dsFetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as MenuBoard
 }
 
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
   const ws = BASE.replace(/^http/, 'ws')
+  // 브라우저는 WebSocket 에 헤더를 못 붙여서 토큰은 쿼리로 갑니다.
+  const token = deviceToken()
   return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`
     + `&storeId=${encodeURIComponent(storeId)}&type=${type}`
+    + (token ? `&token=${encodeURIComponent(token)}` : '')
 }
 
 export function formatAmount(amount: number): string {

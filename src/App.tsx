@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
+import { BASE, fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
+import { forgetPairing, pairWithCode, pairedDevice, remember, type PairedDevice } from './lib/pairing'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /** How often to re-ask each watched store which 판매일자 it is on. */
@@ -41,18 +42,36 @@ type BusinessDays = Record<string, string | null>
  * Which terminal this window is. Identical scheme to sun-moon-terminal-pos
  * — see that repo's App.tsx for the reasoning.
  */
+/**
+ * 페어링된 DID 가 볼 매장. 기본은 자기 매장 하나이고, 주소의 {@code ?storeId=}
+ * 목록에 <b>자기 매장이 들어 있으면</b> 그 목록 전체(푸드코트처럼 여러 매장을
+ * 한 화면에). 서버도 같은 규칙으로 받습니다.
+ */
+function pairedStores(own: string, fromQuery: string | null): string {
+  if (!fromQuery) return own
+  const list = fromQuery.split(',').map((s) => s.trim()).filter(Boolean)
+  return list.includes(own) ? list.join(',') : own
+}
+
 export default function App() {
   const query = new URLSearchParams(window.location.search)
+  const paired = pairedDevice()
   const [deviceId, setDeviceId] = useState<string>(
-    () => query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
+    () => paired?.deviceId ?? query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
   )
   const [storeId, setStoreId] = useState<string>(
-    () => query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
+    () => paired
+      ? pairedStores(paired.storeId, query.get('storeId'))
+      : query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
   )
 
   if (!deviceId || !storeId) {
     return (
       <TerminalPrompt
+        onPaired={(device) => {
+          setStoreId(pairedStores(device.storeId, query.get('storeId')))
+          setDeviceId(device.deviceId)
+        }}
         onChosen={(store, device) => {
           sessionStorage.setItem('storeId', store)
           sessionStorage.setItem('deviceId', device)
@@ -70,6 +89,10 @@ export default function App() {
       deviceId={deviceId}
       storeId={storeId}
       onForget={() => {
+        if (pairedDevice()) {
+          if (!window.confirm('이 기기의 페어링을 지웁니다. 다시 쓰려면 BO 에서 코드를 새로 받아야 합니다.')) return
+          forgetPairing()
+        }
         sessionStorage.removeItem('deviceId')
         sessionStorage.removeItem('storeId')
         setDeviceId('')
@@ -333,7 +356,85 @@ function NumberCard({ order, showStore, tone, fresh = false, remaining }:
   )
 }
 
-function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
+/**
+ * 첫 화면 — 페어링 코드 (store-app.md §3.6). 예전 직접 입력은 표시된 우회로로
+ * 남깁니다: 서버가 warn 인 동안 동작하고, enforce 가 되면 서버에서 막힙니다.
+ */
+function TerminalPrompt({ onChosen, onPaired }: {
+  onChosen: (storeId: string, deviceId: string) => void
+  onPaired: (device: PairedDevice) => void
+}) {
+  const [code, setCode] = useState('')
+  const [pairing, setPairing] = useState(false)
+  const [pairError, setPairError] = useState<string | null>(null)
+  const [manual, setManual] = useState(false)
+
+  async function submitCode() {
+    setPairing(true)
+    setPairError(null)
+    try {
+      const { device, token } = await pairWithCode(BASE, code)
+      if (device.deviceType !== 'DID') {
+        setPairError(`이 코드는 ${device.deviceType} 용입니다. BO 에서 DID 장비의 코드를 새로 받으십시오.`)
+        return
+      }
+      remember(device, token)
+      onPaired(device)
+    } catch (e) {
+      setPairError(e instanceof Error ? e.message : '페어링하지 못했습니다')
+    } finally {
+      setPairing(false)
+    }
+  }
+
+  if (!manual) {
+    return (
+      <div className="prompt">
+        <form
+          className="card"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void submitCode()
+          }}
+        >
+          <h1>기기 페어링</h1>
+          <p className="muted">
+            BO <strong>장비</strong> 화면에서 이 DID 의 <strong>[코드]</strong> 를 눌러 받은
+            6자리를 넣으십시오. 매장과 장비는 BO 에 적힌 대로 정해집니다. 여러 매장을
+            함께 보려면 주소에 <code>?storeId=store-01,store-02</code> 를 붙이십시오
+            (자기 매장이 들어 있어야 합니다).
+          </p>
+          <input
+            type="text"
+            inputMode="numeric"
+            autoFocus
+            maxLength={7}
+            placeholder="000000"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            style={{ fontSize: '2rem', letterSpacing: '0.3em', textAlign: 'center' }}
+          />
+          {pairError && <div className="error" role="alert">{pairError}</div>}
+          <button className="btn accept" type="submit"
+                  disabled={pairing || code.replace(/\s/g, '').length !== 6}>
+            {pairing ? '확인 중…' : '페어링'}
+          </button>
+          <button className="btn link" type="button" onClick={() => setManual(true)}>
+            코드 없이 직접 입력 (페어링 전 임시)
+          </button>
+        </form>
+      </div>
+    )
+  }
+
+  return <ManualPrompt onChosen={onChosen} onBack={() => setManual(false)} />
+}
+
+/** 페어링 전의 방식. 서버가 enforce 가 되면 연결이 거절됩니다. */
+function ManualPrompt({ onChosen, onBack }: {
+  onChosen: (storeId: string, deviceId: string) => void
+  onBack: () => void
+}) {
   const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
   const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
   return (
@@ -345,7 +446,10 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
           onChosen(store.trim(), device.trim())
         }}
       >
-        <h1>단말 등록</h1>
+        <h1>단말 등록 (임시)</h1>
+        <div className="warn" role="status">
+          페어링하지 않은 기기입니다. 서버가 페어링을 요구하기 시작하면 이 방식은 막힙니다.
+        </div>
         <p className="muted">
           이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
           기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다. 매장 ID를
@@ -368,6 +472,7 @@ function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: st
         <button className="btn accept" type="submit" disabled={!store.trim() || !device.trim()}>
           시작
         </button>
+        <button className="btn link" type="button" onClick={onBack}>페어링 코드로 돌아가기</button>
       </form>
     </div>
   )
