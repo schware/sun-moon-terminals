@@ -90,12 +90,18 @@ export function buildTrSale(
       soldAt
     },
     details: lines,
-    // **비워 둡니다.** 결제는 이 단말을 지나지 않습니다 — 손님 주문은
-    // APP-SERVER 가 먼저 승인하고 OMS 로 넘어오므로, POS 가 아는 것은
-    // "얼마짜리 주문이 수락됐다"까지입니다. 여기에 결제수단을 지어
-    // 넣으면 POS 가 보지 못한 사실이 매출에 남습니다. 승인번호가
-    // 거래까지 따라오게 하는 것은 따로 할 일입니다.
-    payments: [],
+    // 결제는 이 단말을 지나지 않습니다 — 손님 주문은 APP-SERVER 가 먼저
+    // 승인하고 OMS 로 넘어옵니다. 그래서 **승인 결과가 주문에 실려 올 때만**
+    // 적습니다(store-app.md §6.2, 2026-09-28). 없으면 예전처럼 비웁니다 —
+    // 결제수단을 지어 넣으면 POS 가 보지 못한 사실이 매출에 남습니다.
+    payments: order.payment
+      ? [{
+          paymentSeq: 1,
+          paymentType: order.payment.method,
+          paymentAmount: order.payment.amount,
+          approvalNo: order.payment.approvalNo
+        }]
+      : [],
     etc: {
       orderId: order.id,
       orderType: order.type,

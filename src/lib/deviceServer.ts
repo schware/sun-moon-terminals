@@ -48,6 +48,11 @@ export interface OrderLine {
 export interface Order {
   id: number
   storeId: string
+  /**
+   * 채널이 승인한 결제 (store-app.md §6.2). 앱·QR 주문에만 있고, 거래 전문의
+   * payments 로 갑니다. 옛 주문과 결제 없는 주문은 없음 — 지어 넣지 않습니다.
+   */
+  payment?: { method: string; approvalNo: string | null; amount: number } | null
   customerId: string
   /** 영수증에 찍히는 품목. 티켓은 고객 id로 충분했지만 영수증은 아닙니다. */
   menuName: string
