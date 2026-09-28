@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  BASE,
   changeStatus,
   fetchBusinessDayStatus,
   fetchKdsMode,
@@ -28,7 +27,7 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
-import { forgetPairing, inShell, pairWithCode, pairedDevice, remember, type PairedDevice } from './lib/pairing'
+import { forgetPairing, pairedDevice } from './lib/pairing'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /** How often to re-ask which 판매일자 this store is on. Same cadence as POS. */
@@ -136,11 +135,6 @@ export default function App() {
   if (!deviceId || !storeId) {
     return (
       <TerminalPrompt
-        onPaired={(device) => {
-          setStoreId(device.storeId)
-          setDeviceId(device.deviceId)
-          setRole(device.kdsRole === 'MAIN' ? 'MAIN' : 'PRODUCTION')
-        }}
         onChosen={(store, device, chosenRole) => {
           sessionStorage.setItem('storeId', store)
           sessionStorage.setItem('deviceId', device)
@@ -852,93 +846,8 @@ function Kds({ deviceId, storeId, role, onForget }:
   )
 }
 
-/**
- * 첫 화면 — 페어링 코드 (store-app.md §3.6).
- *
- * <p>예전 입력(매장·장비·역할을 직접 고르기)은 <b>표시된 우회로</b>로 남깁니다.
- * 서버가 아직 토큰 없는 단말도 받는 동안(API_AUTH=warn)에는 동작하고, 서버가
- * enforce 로 가면 그 길은 서버에서 막힙니다. 막다른 길을 먼저 만들지 않습니다.
- */
-function TerminalPrompt({ onChosen, onPaired }: {
-  onChosen: (storeId: string, deviceId: string, role: KdsRole) => void
-  onPaired: (device: PairedDevice) => void
-}) {
-  const [code, setCode] = useState('')
-  const [pairing, setPairing] = useState(false)
-  const [pairError, setPairError] = useState<string | null>(null)
-  const [manual, setManual] = useState(false)
-
-  async function submitCode() {
-    setPairing(true)
-    setPairError(null)
-    try {
-      const { device, token } = await pairWithCode(BASE, code)
-      if (device.deviceType !== 'KDS') {
-        setPairError(`이 코드는 ${device.deviceType} 용입니다. BO 에서 KDS 장비의 코드를 새로 받으십시오.`)
-        return
-      }
-      // KDS-MAIN 은 셸(SunMoon Store 앱)에서만 (store-app.md §3.6). 라벨 프린터와 주방의
-      // 명령이 그 기기에 있어야 해서입니다. 코드는 이미 쓰였으므로 새로 받아야 합니다.
-      if (device.kdsRole === 'MAIN' && !inShell()) {
-        setPairError('이 기기는 KDS-MAIN 입니다. SunMoon Store 앱에서 페어링하십시오 '
-          + '(이 코드는 이미 쓰였습니다 — BO 에서 새로 받으십시오).')
-        return
-      }
-      remember(device, token)
-      onPaired(device)
-    } catch (e) {
-      setPairError(e instanceof Error ? e.message : '페어링하지 못했습니다')
-    } finally {
-      setPairing(false)
-    }
-  }
-
-  if (!manual) {
-    return (
-      <div className="prompt">
-        <form
-          className="card"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void submitCode()
-          }}
-        >
-          <h1>기기 페어링</h1>
-          <p className="muted">
-            BO <strong>장비</strong> 화면에서 이 KDS 의 <strong>[코드]</strong> 를 눌러 받은
-            6자리를 넣으십시오. 매장·장비·역할(메인/생산)은 BO 에 적힌 대로 정해집니다.
-          </p>
-          <input
-            type="text"
-            inputMode="numeric"
-            autoFocus
-            maxLength={7}
-            placeholder="000000"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            style={{ fontSize: '2rem', letterSpacing: '0.3em', textAlign: 'center' }}
-          />
-          {pairError && <div className="error" role="alert">{pairError}</div>}
-          <button className="btn accept" type="submit"
-                  disabled={pairing || code.replace(/\s/g, '').length !== 6}>
-            {pairing ? '확인 중…' : '페어링'}
-          </button>
-          <button className="btn link" type="button" onClick={() => setManual(true)}>
-            코드 없이 직접 입력 (페어링 전 임시)
-          </button>
-        </form>
-      </div>
-    )
-  }
-
-  return <ManualPrompt onChosen={onChosen} onBack={() => setManual(false)} />
-}
-
-/** 페어링 전의 방식. 서버가 enforce 가 되면 연결이 거절됩니다. */
-function ManualPrompt({ onChosen, onBack }: {
-  onChosen: (storeId: string, deviceId: string, role: KdsRole) => void
-  onBack: () => void
-}) {
+function TerminalPrompt({ onChosen }:
+  { onChosen: (storeId: string, deviceId: string, role: KdsRole) => void }) {
   const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
   const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
   const [role, setRole] = useState<KdsRole>('PRODUCTION')
@@ -951,10 +860,7 @@ function ManualPrompt({ onChosen, onBack }: {
           onChosen(store.trim(), device.trim(), role)
         }}
       >
-        <h1>단말 등록 (임시)</h1>
-        <div className="warn" role="status">
-          페어링하지 않은 기기입니다. 서버가 페어링을 요구하기 시작하면 이 방식은 막힙니다.
-        </div>
+        <h1>단말 등록</h1>
         <p className="muted">
           이 화면이 속한 매장과 장비 ID를 입력하세요. <strong>창(탭)마다 따로</strong>
           기억하므로, 새 창을 열어 다른 매장을 함께 볼 수 있습니다.
@@ -1007,7 +913,6 @@ function ManualPrompt({ onChosen, onBack }: {
         <button className="btn accept" type="submit" disabled={!store.trim() || !device.trim()}>
           시작
         </button>
-        <button className="btn link" type="button" onClick={onBack}>페어링 코드로 돌아가기</button>
       </form>
     </div>
   )
