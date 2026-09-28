@@ -25,7 +25,7 @@ import {
 } from './lib/deviceServer'
 import { BASE } from './lib/deviceServer'
 import { forgetPairing, pairWithCode, pairedDevice, remember, type PairedDevice } from './lib/pairing'
-import { drawClaimQr } from './lib/claimQr'
+import { claimUrl, drawClaimQr } from './lib/claimQr'
 import * as ledger from './lib/ledger'
 import { buildTrSale } from './lib/trSale'
 import { useTerminalSocket } from './lib/useTerminalSocket'
@@ -788,8 +788,49 @@ function Pos({ deviceId, storeId, onForget }:
  * 있어야 할 자리(POS 로컬)가 정해지면 그때 옮깁니다 — 지금 여기서
  * 흉내내면 두 번 만들게 됩니다.
  */
+/**
+ * 셸(SunMoon Store)의 영수증 프린터 (store-app.md §6.3). 있으면 [인쇄] 가 브라우저 인쇄
+ * 대신 영수증 프린터(ESC/POS)로 갑니다 — 무엇을 찍을지만 넘기고, 모양과 프린터 주소는 셸이.
+ */
+interface ShellReceiptPrinter {
+  receipt: (content: unknown) => Promise<{ ok: boolean; error?: string }>
+}
+
+function shellReceiptPrinter(): ShellReceiptPrinter | undefined {
+  const p = (window as unknown as { sunmoon?: { printer?: Partial<ShellReceiptPrinter> } }).sunmoon?.printer
+  return p?.receipt ? (p as ShellReceiptPrinter) : undefined
+}
+
 function Receipt({ order, deviceId, onClose }:
   { order: Order; deviceId: string; onClose: () => void }) {
+  const [printing, setPrinting] = useState(false)
+  const [printError, setPrintError] = useState<string | null>(null)
+  const shellPrinter = shellReceiptPrinter()
+
+  async function print() {
+    if (!shellPrinter) {
+      window.print()
+      return
+    }
+    setPrinting(true)
+    setPrintError(null)
+    const result = await shellPrinter.receipt({
+      storeName: order.storeId,
+      pickupNo: order.pickupNo,
+      tranNo: order.tranNo,
+      businessDate: order.businessDate,
+      lines: order.lines.length > 0
+        ? order.lines.map((l) => ({ menuName: l.menuName, quantity: l.quantity, lineAmount: l.lineAmount }))
+        : [{ menuName: order.menuName, quantity: 1, lineAmount: order.amount }],
+      total: order.amount,
+      payment: order.payment ?? null,
+      claimUrl: order.claimToken ? claimUrl(order.claimToken) : null
+    }).catch((e: unknown) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }))
+    setPrinting(false)
+    // 못 찍었으면 브라우저 인쇄라는 길이 남아 있습니다 — 막다른 길을 두지 않습니다.
+    if (!result.ok) setPrintError(result.error ?? '영수증을 찍지 못했습니다')
+  }
+
   // 주문 QR. 값이 없는 주문(2026-09-24 이전)에는 안 그립니다 — 빈
   // 네모가 찍힌 영수증은 고장으로 읽힙니다.
   const [qr, setQr] = useState<string | null>(null)
@@ -853,8 +894,16 @@ function Receipt({ order, deviceId, onClose }:
           )}
           <p className="receipt-foot">주문 #{order.id} · {formatTime(order.placedAt)}</p>
         </div>
+        {printError && (
+          <div className="error no-print" role="alert">
+            {printError}{' '}
+            <button className="btn link" onClick={() => window.print()}>브라우저로 인쇄</button>
+          </div>
+        )}
         <div className="row no-print">
-          <button className="btn accept" onClick={() => window.print()}>인쇄</button>
+          <button className="btn accept" disabled={printing} onClick={() => void print()}>
+            {printing ? '인쇄 중…' : '인쇄'}
+          </button>
           <button className="btn" onClick={onClose}>닫기</button>
         </div>
       </div>
