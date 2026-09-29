@@ -5,8 +5,8 @@
  * 매장·번호·종류·역할과 토큰을 돌려줍니다. 그 뒤로는 <b>토큰이 신원</b>이고,
  * 화면이 매장·번호를 고르지 않습니다.
  *
- * <p>{@code localStorage} 인 이유: 탭이 아니라 <b>기기</b>에 묶이는 값입니다.
- * 창을 닫았다 열어도, 재부팅해도 같은 기기입니다.
+ * <p><b>브라우저에서는 페어링을 쓰지 않습니다</b> (2026-09-29, Sun&Moon 결정 — 단말 첫
+ * 화면은 매장·장비 입력이고, 페어링은 다시 설계합니다). 신원은 셸 안에서만 셸이 줍니다.
  *
  * <p>같은 파일이 POS·KDS·DID 세 저장소에 있습니다 — 단말 코드 공통화
  * (§10, 8단계) 전까지는 복사본입니다. 고치면 셋 다 고치십시오.
@@ -25,7 +25,7 @@ const DEVICE_KEY = 'sunmoon.device'
 /**
  * Electron 셸(sun-moon-store-app) 안이면 셸이 신원을 줍니다 (store-app.md §5.2).
  * 셸은 페어링을 자기 화면에서 하고 토큰을 암호화해 둡니다 — 화면은 받아 쓰기만 합니다.
- * 셸 밖(브라우저)이면 undefined 이고, 아래의 localStorage 방식 그대로입니다.
+ * 셸 밖(브라우저)이면 undefined 이고, 이 기기는 페어링된 기기가 아닙니다.
  */
 interface ShellIdentity extends PairedDevice {
   token: string
@@ -50,38 +50,31 @@ export function shellServerUrl(): string | null {
   return shell()?.identity.get()?.serverUrl ?? null
 }
 
-function read(key: string): string | null {
+/**
+ * 09-29 전에 브라우저로 페어링해 둔 기록(토큰·기기)은 읽지 않고 지웁니다. 남겨 두면
+ * 같은 주소(:8000)의 POS·KDS·DID 가 모두 그 기기로 매장·장비 입력을 건너뜁니다.
+ */
+function dropBrowserPairing(): void {
   try {
-    return localStorage.getItem(key)
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(DEVICE_KEY)
   } catch {
-    return null
+    // 지울 수 없는 저장소면 남아 있을 것도 없습니다.
   }
 }
 
 export function deviceToken(): string | null {
-  const fromShell = shell()?.identity.get()
-  if (fromShell) return fromShell.token
-  return read(TOKEN_KEY)
+  return shell()?.identity.get()?.token ?? null
 }
 
 export function pairedDevice(): PairedDevice | null {
   const fromShell = shell()?.identity.get()
-  if (fromShell) {
-    const { storeId, deviceId, deviceType, kdsRole } = fromShell
-    return { storeId, deviceId, deviceType, kdsRole }
-  }
-  const raw = read(DEVICE_KEY)
-  if (!raw || !deviceToken()) return null
-  try {
-    return JSON.parse(raw) as PairedDevice
-  } catch {
+  if (!fromShell) {
+    dropBrowserPairing()
     return null
   }
-}
-
-export function remember(device: PairedDevice, token: string): void {
-  localStorage.setItem(TOKEN_KEY, token)
-  localStorage.setItem(DEVICE_KEY, JSON.stringify(device))
+  const { storeId, deviceId, deviceType, kdsRole } = fromShell
+  return { storeId, deviceId, deviceType, kdsRole }
 }
 
 export function forgetPairing(): void {
@@ -91,12 +84,7 @@ export function forgetPairing(): void {
     void bridge.identity.forget()
     return
   }
-  try {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(DEVICE_KEY)
-  } catch {
-    // 지울 수 없는 저장소면 기억할 수도 없었습니다.
-  }
+  dropBrowserPairing()
 }
 
 /** 페어링된 기기면 요청에 {@code Authorization: Device <token>} 을 붙입니다. */
