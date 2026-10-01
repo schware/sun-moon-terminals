@@ -29,7 +29,9 @@ export function useTerminalSocket(
   deviceId: string,
   storeId: string,
   type: 'POS' | 'KDS' | 'DID',
-  onEvent: (event?: TerminalEvent) => void
+  onEvent: (event?: TerminalEvent) => void,
+  /** KDS 메인이면 'MAIN' — 서버가 라벨 작업(PRINT)을 이 연결로 보냅니다. */
+  role?: 'MAIN'
 ): ConnectionState {
   const [state, setState] = useState<ConnectionState>('connecting')
   // In a ref so a re-render with a fresh closure does not tear down the
@@ -45,7 +47,7 @@ export function useTerminalSocket(
 
     const connect = () => {
       setState('connecting')
-      socket = new WebSocket(socketUrl(deviceId, storeId, type))
+      socket = new WebSocket(socketUrl(deviceId, storeId, type, role))
 
       socket.onopen = () => {
         attempt = 0
@@ -94,7 +96,7 @@ export function useTerminalSocket(
       window.clearTimeout(retryTimer)
       socket?.close()
     }
-  }, [deviceId, storeId, type])
+  }, [deviceId, storeId, type, role])
 
   return state
 }

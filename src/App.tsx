@@ -9,7 +9,6 @@ import {
   reprintLabel,
   type PrintJob,
   startLines,
-  type KdsMode,
   fetchMenuBoard,
   fetchOrders,
   formatAmount,
@@ -20,6 +19,7 @@ import {
   recall,
   STATUS_LABEL,
   type BusinessDayStatus,
+  type KdsMode,
   type KdsRole,
   type MenuBoardItem,
 
@@ -27,7 +27,7 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
-import { forgetPairing, pairedDevice } from './lib/pairing'
+import { forgetShellDevice, shellDevice } from './lib/shell'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /** How often to re-ask which 판매일자 this store is on. Same cadence as POS. */
@@ -111,9 +111,8 @@ function myLinesDone(order: Order, deviceId: string): boolean {
 
 export default function App() {
   const query = new URLSearchParams(window.location.search)
-  // 페어링된 기기면 신원은 페어링이 정합니다 (store-app.md §3.1). 주소창이나
-  // 탭 기억보다 앞섭니다 — 이 기기가 무엇인지는 BO 가 정한 것입니다.
-  const paired = pairedDevice()
+  // 셸 안이면 셸에 설정된 매장·장비가 먼저입니다 (store-app.md §5.2).
+  const paired = shellDevice()
   const [deviceId, setDeviceId] = useState<string>(
     () => paired?.deviceId ?? query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
   )
@@ -155,10 +154,15 @@ export default function App() {
       deviceId={deviceId}
       storeId={storeId}
       role={role}
+      onRole={(serverRole) => {
+        // BO 장비의 KDS 역할이 정합니다 — 단말 등록에서 고른 것과 다르면 BO 를 따릅니다.
+        sessionStorage.setItem('kdsRole', serverRole)
+        setRole(serverRole)
+      }}
       onForget={() => {
-        if (pairedDevice()) {
-          if (!window.confirm('이 기기의 페어링을 지웁니다. 다시 쓰려면 BO 에서 코드를 새로 받아야 합니다.')) return
-          forgetPairing()
+        if (shellDevice()) {
+          if (!window.confirm('이 기기의 매장·장비 설정을 지웁니다. 셸이 설정 화면으로 돌아갑니다.')) return
+          forgetShellDevice()
         }
         sessionStorage.removeItem('deviceId')
         sessionStorage.removeItem('storeId')
@@ -170,8 +174,8 @@ export default function App() {
   )
 }
 
-function Kds({ deviceId, storeId, role, onForget }:
-  { deviceId: string; storeId: string; role: KdsRole; onForget: () => void }) {
+function Kds({ deviceId, storeId, role, onRole, onForget }:
+  { deviceId: string; storeId: string; role: KdsRole; onRole: (role: KdsRole) => void; onForget: () => void }) {
   const isMain = role === 'MAIN'
   const [orders, setOrders] = useState<Order[]>([])
   const [businessDay, setBusinessDay] = useState<BusinessDayStatus | null>(null)
@@ -209,7 +213,7 @@ function Kds({ deviceId, storeId, role, onForget }:
     setLabelsFor(order)
     setLabelJobs([])
     try {
-      setLabelJobs(await fetchPrintJobs(order.id))
+      setLabelJobs(await fetchPrintJobs(storeId, order.id))
     } catch (e) {
       setLabelError(e instanceof Error ? e.message : '라벨 작업을 읽지 못했습니다')
     }
@@ -217,29 +221,26 @@ function Kds({ deviceId, storeId, role, onForget }:
 
   async function reprint(job: PrintJob) {
     try {
-      await reprintLabel(job.id)
-      if (labelsFor) setLabelJobs(await fetchPrintJobs(labelsFor.id))
+      await reprintLabel(storeId, deviceId, job.id)
+      if (labelsFor) setLabelJobs(await fetchPrintJobs(storeId, labelsFor.id))
     } catch (e) {
       setLabelError(e instanceof Error ? e.message : '다시 찍지 못했습니다')
     }
   }
 
   /**
-   * 비상 모드 (store-app.md §4.2) — MAIN 이 3분 넘게 끊기면 SUB 가 대신 수령합니다.
-   *
-   * <b>페어링된 SUB 만</b> 묻습니다. 페어링 전 매장은 MAIN 도 토큰이 없어서 서버가
-   * "MAIN 이 없다" 고 보고, 그대로 띄우면 모든 SUB 에 수령 칸이 생깁니다.
+   * 비상 모드 (store-app.md §4.2) — BO 가 MAIN 으로 정한 KDS 가 3분 넘게 끊기면
+   * 생산 KDS 가 대신 수령합니다. 메인 화면은 묻지 않습니다.
    */
   const [kdsMode, setKdsMode] = useState<KdsMode | null>(null)
-  const askMode = !isMain && pairedDevice() !== null
   useEffect(() => {
-    if (!askMode) return
-    const read = () => { fetchKdsMode(storeId).then(setKdsMode).catch(() => { /* 모르면 예전 그대로 */ }) }
+    if (isMain) return
+    const read = () => { fetchKdsMode(storeId).then(setKdsMode).catch(() => { /* 모르면 그대로 */ }) }
     read()
     const timer = window.setInterval(read, 15000)
     return () => window.clearInterval(timer)
-  }, [askMode, storeId])
-  const emergency = askMode && kdsMode?.emergency === true
+  }, [isMain, storeId])
+  const emergency = !isMain && kdsMode?.emergency === true
 
   const reload = useCallback(async () => {
     try {
@@ -274,6 +275,12 @@ function Kds({ deviceId, storeId, role, onForget }:
   // 프레임 하나에 두 가지가 옵니다 — 결품이면 메뉴판만, 그 밖이면
   // 주문만 다시 읽습니다. 못 읽은 프레임이면 둘 다입니다.
   const onEvent = useCallback((event?: TerminalEvent) => {
+    // 연결 인사 — 서버가 BO 장비의 KDS 역할을 알려 줍니다.
+    if (event?.type === 'WELCOME') {
+      const serverRole: KdsRole | null =
+        event.kdsRole === 'MAIN' ? 'MAIN' : event.kdsRole === 'SUB' ? 'PRODUCTION' : null
+      if (serverRole && serverRole !== role) onRole(serverRole)
+    }
     // 라벨 (store-app.md §7.2) — 셸의 KDS-MAIN 만 찍습니다. 주문 목록은 다시 읽지 않습니다.
     if (isPrintEvent(event)) {
       const printer = shellLabelPrinter()
@@ -294,9 +301,9 @@ function Kds({ deviceId, storeId, role, onForget }:
     }
     if (isMenuEvent(event)) void loadMenus()
     else void reload()
-  }, [reload, loadMenus])
+  }, [reload, loadMenus, role, onRole])
 
-  const connection = useTerminalSocket(deviceId, storeId, 'KDS', onEvent)
+  const connection = useTerminalSocket(deviceId, storeId, 'KDS', onEvent, isMain ? 'MAIN' : undefined)
 
   // Polling as well as the socket — a nudge that never arrives must not
   // leave a kitchen staring at an empty screen while tickets pile up.
@@ -422,7 +429,7 @@ function Kds({ deviceId, storeId, role, onForget }:
   async function callAgain(order: Order) {
     setBusyId(order.id)
     try {
-      await recall(order.id)
+      await recall(order.id, deviceId)
       setRecalled(order.id)
       window.setTimeout(() => setRecalled((current) => (current === order.id ? null : current)), 2500)
     } catch (e) {

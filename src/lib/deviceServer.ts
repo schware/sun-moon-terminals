@@ -14,15 +14,11 @@
 // The default is the public address on purpose — see sun-moon-terminal-pos's
 // README for why a LAN default is the wrong default for a screen opened
 // from the :8000 hub's public link.
-import { deviceToken, shellServerUrl, withDeviceAuth } from './pairing'
+import { shellServerUrl } from './shell'
 
-// 셸(Electron) 안이면 셸이 페어링한 서버 주소가 먼저입니다 (store-app.md §5.2).
+// 셸(Electron) 안이면 셸에 설정된 서버 주소가 먼저입니다 (store-app.md §5.2).
 export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
 
-/** 페어링된 기기면 토큰을 붙여 부릅니다 (store-app.md §3). 아니면 예전 그대로. */
-function dsFetch(url: string, init?: RequestInit): Promise<Response> {
-  return fetch(url, withDeviceAuth(init))
-}
 
 export type OrderStatus =
   | 'PLACED'
@@ -175,7 +171,7 @@ export interface BusinessDayStatus {
 }
 
 export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessDayStatus> {
-  const res = await dsFetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
+  const res = await fetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as BusinessDayStatus
 }
@@ -207,7 +203,7 @@ async function failure(res: Response): Promise<Error> {
 /** 그 주방의 줄만 조리 시작 (store-app.md §4.1). 주문은 한 줄이라도 시작되면 조리 중. */
 export async function startLines(orderId: number, deviceId: string): Promise<Order> {
   const params = new URLSearchParams({ id: String(orderId), deviceId })
-  const res = await dsFetch(`${BASE}/orders/start?${params}`, { method: 'POST' })
+  const res = await fetch(`${BASE}/orders/start?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
@@ -215,20 +211,20 @@ export async function startLines(orderId: number, deviceId: string): Promise<Ord
 /** KDS-MAIN 의 강제 전부 완료. 누가 눌렀는지 주문에 남습니다. 서버가 역할을 확인합니다. */
 export async function forceProduced(orderId: number, deviceId: string): Promise<Order> {
   const params = new URLSearchParams({ id: String(orderId), deviceId })
-  const res = await dsFetch(`${BASE}/orders/force-produced?${params}`, { method: 'POST' })
+  const res = await fetch(`${BASE}/orders/force-produced?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
 
 export interface KdsMode {
   storeId: string
-  /** 그 매장의 KDS-MAIN 이 3분 넘게 안 붙어 있음 — SUB 가 대신 수령할 수 있음. */
+  /** 그 매장의 KDS-MAIN(BO 가 정한)이 3분 넘게 안 붙어 있음 — 생산 KDS 가 대신 수령할 수 있음. */
   emergency: boolean
   since: string | null
 }
 
 export async function fetchKdsMode(storeId: string): Promise<KdsMode> {
-  const res = await dsFetch(`${BASE}/kds/mode?storeId=${encodeURIComponent(storeId)}`)
+  const res = await fetch(`${BASE}/kds/mode?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as KdsMode
 }
@@ -247,15 +243,16 @@ export interface PrintJob {
   content: { menuName?: string | null; pickupNo?: string | null }
 }
 
-export async function fetchPrintJobs(orderId: number): Promise<PrintJob[]> {
-  const res = await dsFetch(`${BASE}/pos/print-jobs?orderId=${orderId}`)
+export async function fetchPrintJobs(storeId: string, orderId: number): Promise<PrintJob[]> {
+  const res = await fetch(`${BASE}/pos/print-jobs?storeId=${encodeURIComponent(storeId)}&orderId=${orderId}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as PrintJob[]
 }
 
 /** 라벨 다시 — 서버가 새 작업을 만들고 이 KDS-MAIN 에 PRINT 로 알립니다. */
-export async function reprintLabel(jobId: number): Promise<PrintJob> {
-  const res = await dsFetch(`${BASE}/pos/print-jobs/reprint?id=${jobId}`, { method: 'POST' })
+export async function reprintLabel(storeId: string, deviceId: string, jobId: number): Promise<PrintJob> {
+  const params = new URLSearchParams({ storeId, deviceId, id: String(jobId) })
+  const res = await fetch(`${BASE}/pos/print-jobs/reprint?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as PrintJob
 }
@@ -267,7 +264,7 @@ export function isPrintEvent(event?: TerminalEvent): boolean {
 
 /** The "Get" half: the WebSocket only says something changed, this asks what is true. */
 export async function fetchOrders(status?: OrderStatus): Promise<Order[]> {
-  const res = await dsFetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
+  const res = await fetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order[]
 }
@@ -285,7 +282,7 @@ export async function changeStatus(
   const params = new URLSearchParams({ id: String(orderId), status })
   if (deviceId) params.set('deviceId', deviceId)
 
-  const res = await dsFetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
+  const res = await fetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
@@ -303,6 +300,8 @@ export interface TerminalEvent {
   storeId?: string
   /** 'MENU_SOLD_OUT' | 'MENU_RESTORED' | 'PRINT' — 주문 이벤트에는 없습니다. */
   type?: string
+  /** WELCOME 프레임: BO 장비에 정해진 이 KDS 의 역할 (MAIN | SUB). */
+  kdsRole?: string
   /** PRINT 프레임: 찍을 라벨 작업들 (store-app.md §7.2). */
   jobIds?: number[]
   menuCode?: string
@@ -347,7 +346,7 @@ export interface MenuBoard {
  * 주소를 하나만 압니다.
  */
 export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
-  const res = await dsFetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
+  const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as MenuBoard
 }
@@ -375,8 +374,9 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
  *
  * 상태는 바뀌지 않습니다. 주문은 여전히 PRODUCED 입니다.
  */
-export async function recall(orderId: number): Promise<Order> {
-  const res = await dsFetch(`${BASE}/orders/recall?id=${orderId}`, { method: 'POST' })
+export async function recall(orderId: number, deviceId: string): Promise<Order> {
+  const params = new URLSearchParams({ id: String(orderId), deviceId })
+  const res = await fetch(`${BASE}/orders/recall?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
@@ -392,19 +392,16 @@ export async function handOver(
   // 주문에 남습니다.
   if (override) params.set('override', 'true')
 
-  const res = await dsFetch(`${BASE}/orders/pickup?${params}`, { method: 'POST' })
+  const res = await fetch(`${BASE}/orders/pickup?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
 
-export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
+export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID', role?: 'MAIN'): string {
   const ws = BASE.replace(/^http/, 'ws')
-  // 브라우저는 WebSocket 에 헤더를 못 붙여서 토큰은 쿼리로 갑니다. 토큰이 있으면
-  // 서버는 매장·번호·종류를 토큰에서 읽고 나머지는 무시합니다.
-  const token = deviceToken()
   return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`
     + `&storeId=${encodeURIComponent(storeId)}&type=${type}`
-    + (token ? `&token=${encodeURIComponent(token)}` : '')
+    + (role ? `&role=${role}` : '')
 }
 
 export function formatAmount(amount: number): string {
