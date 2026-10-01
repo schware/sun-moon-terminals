@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
-import { forgetPairing, pairedDevice } from './lib/pairing'
 import { useTerminalSocket } from './lib/useTerminalSocket'
 
 /** How often to re-ask each watched store which 판매일자 it is on. */
@@ -42,27 +41,13 @@ type BusinessDays = Record<string, string | null>
  * Which terminal this window is. Identical scheme to sun-moon-terminal-pos
  * — see that repo's App.tsx for the reasoning.
  */
-/**
- * 페어링된 DID 가 볼 매장. 기본은 자기 매장 하나이고, 주소의 {@code ?storeId=}
- * 목록에 <b>자기 매장이 들어 있으면</b> 그 목록 전체(푸드코트처럼 여러 매장을
- * 한 화면에). 서버도 같은 규칙으로 받습니다.
- */
-function pairedStores(own: string, fromQuery: string | null): string {
-  if (!fromQuery) return own
-  const list = fromQuery.split(',').map((s) => s.trim()).filter(Boolean)
-  return list.includes(own) ? list.join(',') : own
-}
-
 export default function App() {
   const query = new URLSearchParams(window.location.search)
-  const paired = pairedDevice()
   const [deviceId, setDeviceId] = useState<string>(
-    () => paired?.deviceId ?? query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
+    () => query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
   )
   const [storeId, setStoreId] = useState<string>(
-    () => paired
-      ? pairedStores(paired.storeId, query.get('storeId'))
-      : query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
+    () => query.get('storeId') ?? sessionStorage.getItem('storeId') ?? ''
   )
 
   if (!deviceId || !storeId) {
@@ -86,10 +71,6 @@ export default function App() {
       deviceId={deviceId}
       storeId={storeId}
       onForget={() => {
-        if (pairedDevice()) {
-          if (!window.confirm('이 기기의 페어링을 지웁니다. 다시 쓰려면 BO 에서 코드를 새로 받아야 합니다.')) return
-          forgetPairing()
-        }
         sessionStorage.removeItem('deviceId')
         sessionStorage.removeItem('storeId')
         setDeviceId('')
