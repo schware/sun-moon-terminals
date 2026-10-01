@@ -139,8 +139,9 @@ export default function App() {
           sessionStorage.setItem('storeId', store)
           sessionStorage.setItem('deviceId', device)
           sessionStorage.setItem('kdsRole', chosenRole)
-          localStorage.setItem('lastStoreId', store)
-          localStorage.setItem('lastDeviceId', device)
+          // 화면마다 따로 — POS·KDS·DID 가 같은 주소(:8000)라 localStorage 를 같이 씁니다.
+          localStorage.setItem('kds.lastStoreId', store)
+          localStorage.setItem('kds.lastDeviceId', device)
           setStoreId(store)
           setDeviceId(device)
           setRole(chosenRole)
@@ -848,8 +849,8 @@ function Kds({ deviceId, storeId, role, onForget }:
 
 function TerminalPrompt({ onChosen }:
   { onChosen: (storeId: string, deviceId: string, role: KdsRole) => void }) {
-  const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
-  const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
+  const [store, setStore] = useState(() => localStorage.getItem('kds.lastStoreId') ?? '')
+  const [device, setDevice] = useState(() => localStorage.getItem('kds.lastDeviceId') ?? '')
   const [role, setRole] = useState<KdsRole>('PRODUCTION')
   return (
     <div className="prompt">
