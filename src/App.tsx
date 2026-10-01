@@ -71,8 +71,9 @@ export default function App() {
         onChosen={(store, device) => {
           sessionStorage.setItem('storeId', store)
           sessionStorage.setItem('deviceId', device)
-          localStorage.setItem('lastStoreId', store)
-          localStorage.setItem('lastDeviceId', device)
+          // 화면마다 따로 — POS·KDS·DID 가 같은 주소(:8000)라 localStorage 를 같이 씁니다.
+          localStorage.setItem('did.lastStoreId', store)
+          localStorage.setItem('did.lastDeviceId', device)
           setStoreId(store)
           setDeviceId(device)
         }}
@@ -353,8 +354,8 @@ function NumberCard({ order, showStore, tone, fresh = false, remaining }:
 }
 
 function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
-  const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
-  const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
+  const [store, setStore] = useState(() => localStorage.getItem('did.lastStoreId') ?? '')
+  const [device, setDevice] = useState(() => localStorage.getItem('did.lastDeviceId') ?? '')
   return (
     <div className="prompt">
       <form
