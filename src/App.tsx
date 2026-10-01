@@ -23,7 +23,7 @@ import {
   type TerminalEvent,
   tableLabel
 } from './lib/deviceServer'
-import { forgetPairing, pairedDevice } from './lib/pairing'
+import { forgetShellDevice, shellDevice } from './lib/shell'
 import { claimUrl, drawClaimQr } from './lib/claimQr'
 import * as ledger from './lib/ledger'
 import { buildTrSale } from './lib/trSale'
@@ -47,8 +47,8 @@ import { useTerminalSocket } from './lib/useTerminalSocket'
  */
 export default function App() {
   const query = new URLSearchParams(window.location.search)
-  // 페어링된 기기면 신원은 페어링이 정합니다 (store-app.md §3.1) — 탭 기억보다 앞섭니다.
-  const paired = pairedDevice()
+  // 셸 안이면 셸에 설정된 매장·장비가 먼저입니다 (store-app.md §5.2).
+  const paired = shellDevice()
   const [deviceId, setDeviceId] = useState<string>(
     () => paired?.deviceId ?? query.get('deviceId') ?? sessionStorage.getItem('deviceId') ?? ''
   )
@@ -81,9 +81,9 @@ export default function App() {
       deviceId={deviceId}
       storeId={storeId}
       onForget={() => {
-        if (pairedDevice()) {
-          if (!window.confirm('이 기기의 페어링을 지웁니다. 다시 쓰려면 BO 에서 코드를 새로 받아야 합니다.')) return
-          forgetPairing()
+        if (shellDevice()) {
+          if (!window.confirm('이 기기의 매장·장비 설정을 지웁니다. 셸이 설정 화면으로 돌아갑니다.')) return
+          forgetShellDevice()
         }
         sessionStorage.removeItem('deviceId')
         sessionStorage.removeItem('storeId')

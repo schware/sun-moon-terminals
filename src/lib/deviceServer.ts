@@ -15,15 +15,11 @@
 // the :8000 hub by its public link, and a LAN default silently produced a
 // build that only worked inside the LAN — from outside it loaded fine and
 // then reported the Device Server as unreachable.
-import { deviceToken, shellServerUrl, withDeviceAuth } from './pairing'
+import { shellServerUrl } from './shell'
 
-// 셸(Electron) 안이면 셸이 페어링한 서버 주소가 먼저입니다 (store-app.md §5.2).
+// 셸(Electron) 안이면 셸에 설정된 서버 주소가 먼저입니다 (store-app.md §5.2).
 export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
 
-/** 페어링된 기기면 토큰을 붙여 부릅니다 (store-app.md §3). 아니면 예전 그대로. */
-function dsFetch(url: string, init?: RequestInit): Promise<Response> {
-  return fetch(url, withDeviceAuth(init))
-}
 
 export type OrderStatus =
   | 'PLACED'
@@ -169,7 +165,7 @@ async function failure(res: Response): Promise<Error> {
 
 /** The "Get" half: the WebSocket only says something changed, this asks what is true. */
 export async function fetchOrders(status?: OrderStatus): Promise<Order[]> {
-  const res = await dsFetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
+  const res = await fetch(`${BASE}/orders${status ? `?status=${status}` : ''}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order[]
 }
@@ -191,7 +187,7 @@ export async function changeStatus(
   // 매출의 키가 조리·배달 과정에서 움직이면 그건 더 이상 키가 아닙니다.
   if (tranNo) params.set('tranNo', tranNo)
 
-  const res = await dsFetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
+  const res = await fetch(`${BASE}/orders/status?${params}`, { method: 'POST' })
   if (!res.ok) throw await failure(res)
   return (await res.json()) as Order
 }
@@ -222,7 +218,7 @@ export interface OpenResult {
 
 /** Whether this store has 개점'd, and whether its 영업일자 has gone stale (needsClosing). */
 export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessDayStatus> {
-  const res = await dsFetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
+  const res = await fetch(`${BASE}/business-days/status?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as BusinessDayStatus
 }
@@ -234,7 +230,7 @@ export async function fetchBusinessDayStatus(storeId: string): Promise<BusinessD
  * rather than starting a new day.
  */
 export async function openBusinessDay(storeId: string, deviceId: string): Promise<OpenResult> {
-  const res = await dsFetch(`${BASE}/business-days/open`, {
+  const res = await fetch(`${BASE}/business-days/open`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storeId, deviceId })
@@ -245,7 +241,7 @@ export async function openBusinessDay(storeId: string, deviceId: string): Promis
 
 /** 마감. 409 if the store was not open — surfaced via `failure()`'s own error-message handling. */
 export async function closeBusinessDay(storeId: string, deviceId: string): Promise<BusinessDay> {
-  const res = await dsFetch(`${BASE}/business-days/close`, {
+  const res = await fetch(`${BASE}/business-days/close`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ storeId, deviceId })
@@ -328,7 +324,7 @@ export async function fetchNotices(
   storeId: string, deviceType: string, deviceNo: string
 ): Promise<Notice[]> {
   const q = new URLSearchParams({ storeId, deviceType, deviceNo })
-  const res = await dsFetch(`${BASE}/pos/notices?${q}`)
+  const res = await fetch(`${BASE}/pos/notices?${q}`)
   if (!res.ok) throw await failure(res)
   return ((await res.json()) as { notices: Notice[] }).notices
 }
@@ -344,7 +340,7 @@ export async function acknowledgeNotice(
   noticeId: number, storeId: string, deviceType: string, deviceNo: string
 ): Promise<void> {
   try {
-    await dsFetch(`${BASE}/pos/notices/ack`, {
+    await fetch(`${BASE}/pos/notices/ack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ noticeId, storeId, deviceType, deviceNo })
@@ -387,7 +383,7 @@ export interface MenuBoard {
  * 주소를 하나만 압니다.
  */
 export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
-  const res = await dsFetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
+  const res = await fetch(`${BASE}/menus?storeId=${encodeURIComponent(storeId)}`)
   if (!res.ok) throw await failure(res)
   return (await res.json()) as MenuBoard
 }
@@ -403,7 +399,7 @@ export async function fetchMenuBoard(storeId: string): Promise<MenuBoard> {
 export async function reportReceived(orderId: number, deviceId: string): Promise<void> {
   const params = new URLSearchParams({ id: String(orderId), deviceId })
   try {
-    await dsFetch(`${BASE}/orders/received?${params}`, { method: 'POST' })
+    await fetch(`${BASE}/orders/received?${params}`, { method: 'POST' })
   } catch {
     // 기록이 빠지면 나중에 "POS가 못 받았다"로 보일 뿐, 주문 처리에는
     // 영향이 없습니다.
@@ -427,7 +423,7 @@ export interface SaleUploadResult {
  * 확신이 없으면 그냥 다시 보내면 됩니다.
  */
 export async function uploadSales(payloads: unknown[]): Promise<SaleUploadResult> {
-  const res = await dsFetch(`${BASE}/sales`, {
+  const res = await fetch(`${BASE}/sales`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payloads)
@@ -454,11 +450,8 @@ export async function findOrder(orderId: number): Promise<Order | null> {
 
 export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS' | 'DID'): string {
   const ws = BASE.replace(/^http/, 'ws')
-  // 브라우저는 WebSocket 에 헤더를 못 붙여서 토큰은 쿼리로 갑니다.
-  const token = deviceToken()
   return `${ws}/ws?deviceId=${encodeURIComponent(deviceId)}`
     + `&storeId=${encodeURIComponent(storeId)}&type=${type}`
-    + (token ? `&token=${encodeURIComponent(token)}` : '')
 }
 
 export function formatAmount(amount: number): string {
