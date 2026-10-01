@@ -66,8 +66,9 @@ export default function App() {
           sessionStorage.setItem('deviceId', device)
           // Convenience only — the next window prefills from these and
           // still asks.
-          localStorage.setItem('lastStoreId', store)
-          localStorage.setItem('lastDeviceId', device)
+          // 화면마다 따로 — POS·KDS·DID 가 같은 주소(:8000)라 localStorage 를 같이 씁니다.
+          localStorage.setItem('pos.lastStoreId', store)
+          localStorage.setItem('pos.lastDeviceId', device)
           setStoreId(store)
           setDeviceId(device)
         }}
@@ -909,8 +910,8 @@ function Receipt({ order, deviceId, onClose }:
 function TerminalPrompt({ onChosen }: { onChosen: (storeId: string, deviceId: string) => void }) {
   // Prefilled from the last window, not applied automatically — this
   // screen always asks, so a second window can be a different shop.
-  const [store, setStore] = useState(() => localStorage.getItem('lastStoreId') ?? '')
-  const [device, setDevice] = useState(() => localStorage.getItem('lastDeviceId') ?? '')
+  const [store, setStore] = useState(() => localStorage.getItem('pos.lastStoreId') ?? '')
+  const [device, setDevice] = useState(() => localStorage.getItem('pos.lastDeviceId') ?? '')
   return (
     <div className="prompt">
       <form
