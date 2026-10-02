@@ -14,7 +14,7 @@
 // The default is the public address on purpose — see sun-moon-terminal-pos's
 // README for why a LAN default is the wrong default for a screen opened
 // from the :8000 hub's public link.
-export const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
+export const BASE = import.meta.env.VITE_DEVICE_SERVER ?? 'http://sunmoonwork.duckdns.org:8087'
 
 export type OrderStatus =
   | 'PLACED'
