@@ -17,7 +17,7 @@
 import { shellServerUrl } from './shell'
 
 // 셸(Electron) 안이면 셸에 설정된 서버 주소가 먼저입니다 (store-app.md §5.2).
-export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://211.217.183.232:8087'
+export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://sunmoonwork.duckdns.org:8087'
 
 
 export type OrderStatus =

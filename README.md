@@ -62,7 +62,7 @@ npm run build          # → dist/
 
 | Variable | Default |
 |---|---|
-| `VITE_DEVICE_SERVER` | `http://211.217.183.232:8087` |
+| `VITE_DEVICE_SERVER` | `http://sunmoonwork.duckdns.org:8087` |
 
 Build-time, not runtime — see sun-moon-terminal-pos's README for why
 the default is the public address rather than the LAN one.
