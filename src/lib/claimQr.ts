@@ -24,7 +24,7 @@ import QRCode from 'qrcode'
  * 중에 물어볼 곳이 없습니다.
  */
 const CLAIM_BASE = import.meta.env.VITE_CLAIM_BASE
-  ?? 'http://211.217.183.232:8085/channel-order/o'
+  ?? 'http://sunmoonwork.duckdns.org:8085/channel-order/o'
 
 export function claimUrl(token: string): string {
   return `${CLAIM_BASE}/${encodeURIComponent(token)}`

@@ -56,7 +56,7 @@ npm run build          # → dist/
 
 | Variable | Default |
 |---|---|
-| `VITE_DEVICE_SERVER` | `http://211.217.183.232:8087` |
+| `VITE_DEVICE_SERVER` | `http://sunmoonwork.duckdns.org:8087` |
 
 Build-time, not runtime: these are static files with no server of their
 own to ask. **That makes the default load-bearing** — a build that picks
