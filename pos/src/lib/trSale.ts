@@ -11,7 +11,7 @@
  * 이 전문의 이름입니다 (umbrella docs/adr/0009).
  */
 
-import type { Order } from './deviceServer'
+import type { Order } from './posApi'
 
 export interface TrSale {
   header: {

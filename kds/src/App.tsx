@@ -26,9 +26,9 @@ import {
   type Order,
   type TerminalEvent,
   tableLabel
-} from './lib/deviceServer'
-import { forgetShellDevice, shellDevice } from './lib/shell'
-import { useTerminalSocket } from './lib/useTerminalSocket'
+} from './lib/kdsApi'
+import { forgetShellDevice, shellDevice } from '@sunmoon/terminal-common/shell'
+import { useTerminalSocket } from '@sunmoon/terminal-common/socket'
 
 /** How often to re-ask which 판매일자 this store is on. Same cadence as POS. */
 const BUSINESS_DAY_POLL_MS = 30000

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchBusinessDayStatus, fetchOrders, type Order } from './lib/deviceServer'
-import { useTerminalSocket } from './lib/useTerminalSocket'
+import { fetchBusinessDayStatus, fetchOrders, type Order } from '@sunmoon/terminal-common/device-server'
+import { useTerminalSocket } from '@sunmoon/terminal-common/socket'
 
 /** How often to re-ask each watched store which 판매일자 it is on. */
 const BUSINESS_DAY_POLL_MS = 30000

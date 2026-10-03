@@ -22,12 +22,12 @@ import {
   type Order,
   type TerminalEvent,
   tableLabel
-} from './lib/deviceServer'
-import { forgetShellDevice, shellDevice } from './lib/shell'
+} from './lib/posApi'
+import { forgetShellDevice, shellDevice } from '@sunmoon/terminal-common/shell'
 import { claimUrl, drawClaimQr } from './lib/claimQr'
 import * as ledger from './lib/ledger'
 import { buildTrSale } from './lib/trSale'
-import { useTerminalSocket } from './lib/useTerminalSocket'
+import { useTerminalSocket } from '@sunmoon/terminal-common/socket'
 
 /**
  * Which terminal this window is.

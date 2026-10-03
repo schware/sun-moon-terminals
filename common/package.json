@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "exports": {
+    "./device-server": "./src/deviceServer.ts",
+    "./socket": "./src/useTerminalSocket.ts",
+    "./shell": "./src/shell.ts",
     "./format": "./src/format.ts"
   },
   "peerDependencies": {
