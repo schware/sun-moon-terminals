@@ -1,0 +1,12 @@
+{
+  "name": "@sunmoon/terminal-common",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./format": "./src/format.ts"
+  },
+  "peerDependencies": {
+    "react": "18.3.1"
+  }
+}

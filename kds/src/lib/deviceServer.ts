@@ -404,9 +404,7 @@ export function socketUrl(deviceId: string, storeId: string, type: 'POS' | 'KDS'
     + (role ? `&role=${role}` : '')
 }
 
-export function formatAmount(amount: number): string {
-  return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: 'KRW' }).format(amount)
-}
+export { formatAmount } from '@sunmoon/terminal-common/format'
 
 export function formatTime(iso: string): string {
   const d = new Date(iso)

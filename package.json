@@ -1,0 +1,10 @@
+{
+  "name": "sun-moon-terminals",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["common", "pos", "kds", "did"],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
