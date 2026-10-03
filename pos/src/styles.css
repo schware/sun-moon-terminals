@@ -1,0 +1,351 @@
+/* A shop-floor screen, not a desk one: big touch targets, high contrast,
+   and nothing that needs a second look to read from an arm's length. */
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --panel-2: #0e1118;
+  --border: #22262f;
+  --text: #e6e8eb;
+  --muted: #8a8f99;
+  --accent: #5b8cff;
+  --up: #3ecf8e;
+  --danger: #ff6b6b;
+  --warn: #ffb020;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Noto Sans KR', sans-serif;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+.shell { max-width: 1100px; margin: 0 auto; padding: 20px 18px 40px; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+}
+
+h1 { font-size: 20px; font-weight: 650; margin: 0 0 2px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.count {
+  background: var(--accent); color: #0b0d12;
+  border-radius: 999px; padding: 1px 9px;
+  font-size: 12.5px; font-weight: 700;
+}
+
+/* Connection state is the first thing a shop checks when nothing arrives,
+   so it is always on screen rather than behind a menu. */
+.conn { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.conn::before { content: '● '; }
+.conn.open { color: var(--up); }
+.conn.connecting { color: var(--warn); }
+.conn.closed { color: var(--danger); }
+.conn.displaced { color: var(--warn); }
+
+.bizday-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 12px 14px; margin-bottom: 16px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.bizday-bar .row { flex: 0; }
+.bizday-bar .btn { flex: 0; min-height: 0; padding: 8px 16px; font-size: 13.5px; }
+.bizday-open { color: var(--up); font-size: 13.5px; font-weight: 600; }
+
+section { margin-bottom: 30px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* A waiting order should catch the eye from across a counter. */
+.cards .card { border-color: rgba(91, 140, 255, 0.35); }
+
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.order-no { font-size: 15px; font-weight: 700; color: var(--accent); }
+.customer { font-size: 15px; margin-bottom: 4px; }
+.amount { font-size: 21px; font-weight: 700; margin-bottom: 14px; }
+
+.row { display: flex; gap: 8px; }
+
+.btn {
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: #1a1e27;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  flex: 1;
+  /* Fingers, not mice. */
+  min-height: 46px;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.accept { background: var(--up); border-color: var(--up); color: #08130d; }
+.btn.reject { background: transparent; border-color: rgba(255, 107, 107, 0.4); color: var(--danger); }
+.btn.accept:hover:not(:disabled) { filter: brightness(1.08); }
+.btn.reject:hover:not(:disabled) { background: rgba(255, 107, 107, 0.1); }
+.btn.link { flex: 0; background: none; border: none; color: var(--muted); font-size: 13px; min-height: 0; padding: 4px 8px; }
+.btn.link:hover { color: var(--text); }
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 34px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 12.5px; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+.status { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.status.accepted { color: var(--up); border-color: rgba(62, 207, 142, 0.35); }
+.status.rejected, .status.expired { color: var(--danger); border-color: rgba(255, 107, 107, 0.3); }
+.status.produced, .status.delivering { color: var(--accent); border-color: rgba(91, 140, 255, 0.3); }
+.status.completed { color: var(--muted); }
+
+.error, .warn {
+  font-size: 13.5px; line-height: 1.5;
+  border-radius: 9px; padding: 11px 13px; margin-bottom: 16px;
+}
+.error { color: var(--danger); background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.25); }
+.warn { color: var(--warn); background: rgba(255, 176, 32, 0.08); border: 1px solid rgba(255, 176, 32, 0.25); }
+
+footer {
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border); padding-top: 14px; margin-top: 10px;
+}
+
+.prompt { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.prompt .card { width: 100%; max-width: 360px; }
+.prompt h1 { margin-bottom: 6px; }
+.prompt p { margin: 0 0 18px; line-height: 1.6; }
+.prompt input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px; color: var(--text);
+  font-size: 16px; font-family: inherit; margin-bottom: 12px;
+}
+.prompt input:focus { outline: none; border-color: var(--accent); }
+
+/* 도착지 — "이 메뉴를 저 자리로". 주문번호 옆에 두는 것은, 카운터와
+   주방이 티켓에서 제일 먼저 찾는 값이기 때문입니다. 없으면 아무것도
+   그리지 않습니다: 테이블이 아닌 주문(포장·배달)이 빈 칸으로 보이면
+   "누락"처럼 읽힙니다. */
+.table-tag {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(91, 140, 255, 0.16);
+  color: #8fb0ff;
+  border: 1px solid rgba(91, 140, 255, 0.35);
+  white-space: nowrap;
+}
+
+/* 오늘의 메뉴 — 단말의 로컬 마스터.
+   POS에서는 읽기 전용입니다. 결품을 걸고 푸는 곳은 BO이고, 여기는 그
+   결과가 비치는 곳입니다. 주문을 받는 사람이 "오늘 없는 것"을 팔지
+   않으려면 화면 안에 있어야 하지만, 두 군데서 고칠 수 있으면 두 값이
+   달라집니다. */
+.count.out { background: var(--danger); color: #0b0d12; }
+
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.menu-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.menu-chip .chip-name { font-size: 14px; font-weight: 600; }
+.menu-chip .chip-meta { font-size: 12px; color: var(--muted); }
+.menu-chip .chip-flag {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--danger);
+}
+/* 글자를 읽기 전에 색으로 먼저 보여야 합니다. */
+.menu-chip.out {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.10);
+}
+.menu-chip.out .chip-name { text-decoration: line-through; color: var(--muted); }
+
+.hint { margin: 10px 0 0; }
+
+/* 영수증.
+   전체를 덮는 이유는 KDS의 수령 확인과 같습니다 — 손님이 앞에 서 있는
+   순간이라 뒤의 티켓을 실수로 누르면 안 됩니다. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+
+.sheet {
+  width: min(380px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+}
+
+/* 종이처럼 보이게 둡니다 — 인쇄 결과와 화면이 같은 모양이어야 직원이
+   "이게 나오겠구나"를 미리 압니다. */
+.receipt-paper {
+  background: #fff;
+  color: #111;
+  border-radius: 10px;
+  padding: 18px 20px;
+  font-size: 13px;
+}
+.receipt-paper h3 { margin: 0 0 12px; font-size: 16px; text-align: center; letter-spacing: 0.3em; }
+.receipt-paper hr { border: 0; border-top: 1px dashed #bbb; margin: 12px 0; }
+.receipt-paper dl {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 5px 10px;
+  margin: 0;
+}
+.receipt-paper dt { color: #666; }
+.receipt-paper dd { margin: 0; text-align: right; }
+.receipt-paper dd.strong { font-weight: 700; }
+.receipt-paper dd.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+/* 대기 카드의 줄 목록 — 수락 전에 무엇을 시켰는지 보여줍니다.
+   금액만 보고 수락하면 주방에 들어가서야 무엇인지 압니다. */
+/* ---------- 공지 ---------- */
+
+/* 평소에는 한 줄. 상시 공지가 화면 위쪽을 차지하면 주문 목록이 밀리고,
+   며칠 지나면 아무도 안 읽습니다. */
+.notice-bar {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.notice-bar.open { border-color: var(--accent); }
+
+.notice-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px;
+  background: none; border: none; color: var(--text);
+  font-family: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.notice-head:hover { background: var(--panel-2); }
+.notice-icon {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.04em;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft, rgba(91, 140, 255, 0.12)); color: var(--accent);
+}
+.notice-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notice-flag {
+  font-size: 11px; font-weight: 800;
+  padding: 2px 8px; border-radius: 999px;
+  background: rgba(255, 107, 107, 0.14); color: var(--danger);
+}
+
+.notice-list { list-style: none; margin: 0; padding: 0 12px 10px; }
+.notice-list li { padding: 9px 0; border-top: 1px solid var(--border); font-size: 13.5px; }
+.notice-list li strong { display: block; margin-bottom: 3px; }
+.notice-list li p { margin: 0 0 3px; color: var(--muted); line-height: 1.5; white-space: pre-wrap; }
+.notice-list li.urgent strong { color: var(--danger); }
+/* 이미 본 긴급. 목록에는 남되 "다시 봐야 할 것"으로는 안 읽히게. */
+.notice-seen {
+  margin-left: 7px; font-size: 11px; font-weight: 600;
+  color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px;
+}
+
+/* 긴급 — 화면을 가로막습니다. 구석에 뜨면 바쁜 카운터에서는 안 읽힙니다. */
+.urgent-sheet { border: 2px solid var(--danger); }
+.urgent-tag {
+  display: inline-block; font-size: 12px; font-weight: 800;
+  padding: 3px 10px; border-radius: 999px; margin-bottom: 10px;
+  background: rgba(255, 107, 107, 0.14); color: var(--danger);
+}
+.urgent-sheet h3 { margin: 0 0 10px; font-size: 19px; }
+.urgent-body { margin: 0 0 18px; font-size: 15.5px; line-height: 1.6; white-space: pre-wrap; }
+
+.order-lines { list-style: none; margin: 4px 0 8px; padding: 0; font-size: 14px; }
+.order-lines li { padding: 2px 0; }
+
+/* 영수증의 줄 — 손님이 받는 종이라 "외 2건"으로 뭉치면 안 됩니다. */
+.receipt-lines { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0 10px; }
+.receipt-lines td { padding: 3px 0; vertical-align: top; }
+.receipt-lines td.qty { width: 34px; text-align: center; color: var(--muted); }
+.receipt-lines td.amt { width: 84px; text-align: right; }
+
+.receipt-foot { margin: 14px 0 0; text-align: center; color: #777; font-size: 11.5px; }
+
+/* 인쇄할 때는 종이만 남깁니다 — 화면과 버튼이 같이 나오면 종이가 아깝습니다. */
+@media print {
+  body { background: #fff; }
+  .shell, .sheet-backdrop > .sheet > .no-print { display: none !important; }
+  .sheet-backdrop {
+    position: static;
+    background: none;
+    padding: 0;
+  }
+  .sheet { border: 0; padding: 0; width: auto; background: none; }
+  .receipt-paper { border-radius: 0; }
+}
+
+/* 영수증의 주문 QR (umbrella docs/adr/0007). 인쇄에 같이 나갑니다 —
+   화면에서만 보이면 손님은 못 가져갑니다. */
+.receipt-qr {
+  text-align: center;
+  margin: 10px 0 4px;
+}
+.receipt-qr img {
+  display: inline-block;
+  /* 영수증 프린터는 흑백이고 배경이 종이입니다. 흰 바탕을 명시해야
+     화면의 어두운 테마가 그대로 인쇄되는 일이 없습니다. */
+  background: #fff;
+}
+.receipt-qr p {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #444;
+}
