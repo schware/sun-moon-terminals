@@ -1,0 +1,292 @@
+/* A shop-floor screen, not a desk one: big touch targets, high contrast,
+   and nothing that needs a second look to read from an arm's length. */
+:root {
+  --bg: #0b0d12;
+  --panel: #12151c;
+  --panel-2: #0e1118;
+  --border: #22262f;
+  --text: #e6e8eb;
+  --muted: #8a8f99;
+  --accent: #5b8cff;
+  --up: #3ecf8e;
+  --danger: #ff6b6b;
+  --warn: #ffb020;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Pretendard', 'Noto Sans KR', sans-serif;
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+}
+
+.shell { max-width: 1100px; margin: 0 auto; padding: 20px 18px 40px; }
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+}
+
+h1 { font-size: 20px; font-weight: 650; margin: 0 0 2px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.muted { color: var(--muted); font-size: 13px; }
+
+.count {
+  background: var(--accent); color: #0b0d12;
+  border-radius: 999px; padding: 1px 9px;
+  font-size: 12.5px; font-weight: 700;
+}
+
+/* Connection state is the first thing a shop checks when nothing arrives,
+   so it is always on screen rather than behind a menu. */
+.conn { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.conn::before { content: '● '; }
+.conn.open { color: var(--up); }
+.conn.connecting { color: var(--warn); }
+.conn.closed { color: var(--danger); }
+.conn.displaced { color: var(--warn); }
+
+section { margin-bottom: 30px; }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+/* A waiting order should catch the eye from across a counter. */
+.cards .card { border-color: rgba(91, 140, 255, 0.35); }
+
+.card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.order-no { font-size: 15px; font-weight: 700; color: var(--accent); }
+.customer { font-size: 15px; margin-bottom: 4px; }
+.amount { font-size: 21px; font-weight: 700; margin-bottom: 14px; }
+
+.row { display: flex; gap: 8px; }
+
+.btn {
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  background: #1a1e27;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  flex: 1;
+  /* Fingers, not mice. */
+  min-height: 46px;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.accept { background: var(--up); border-color: var(--up); color: #08130d; }
+.btn.reject { background: transparent; border-color: rgba(255, 107, 107, 0.4); color: var(--danger); }
+.btn.accept:hover:not(:disabled) { filter: brightness(1.08); }
+.btn.reject:hover:not(:disabled) { background: rgba(255, 107, 107, 0.1); }
+.btn.link { flex: 0; background: none; border: none; color: var(--muted); font-size: 13px; min-height: 0; padding: 4px 8px; }
+.btn.link:hover { color: var(--text); }
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 34px 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); }
+th { color: var(--muted); font-weight: 500; font-size: 12.5px; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+.status { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
+.status.accepted { color: var(--up); border-color: rgba(62, 207, 142, 0.35); }
+.status.rejected, .status.expired { color: var(--danger); border-color: rgba(255, 107, 107, 0.3); }
+.status.produced, .status.delivering { color: var(--accent); border-color: rgba(91, 140, 255, 0.3); }
+.status.completed { color: var(--muted); }
+
+.error, .warn {
+  font-size: 13.5px; line-height: 1.5;
+  border-radius: 9px; padding: 11px 13px; margin-bottom: 16px;
+}
+.error { color: var(--danger); background: rgba(255, 107, 107, 0.08); border: 1px solid rgba(255, 107, 107, 0.25); }
+.warn { color: var(--warn); background: rgba(255, 176, 32, 0.08); border: 1px solid rgba(255, 176, 32, 0.25); }
+
+footer {
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border); padding-top: 14px; margin-top: 10px;
+}
+
+.prompt { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.prompt .card { width: 100%; max-width: 360px; }
+.prompt h1 { margin-bottom: 6px; }
+.prompt p { margin: 0 0 18px; line-height: 1.6; }
+.prompt input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 9px; padding: 12px; color: var(--text);
+  font-size: 16px; font-family: inherit; margin-bottom: 12px;
+}
+.prompt input:focus { outline: none; border-color: var(--accent); }
+
+/* 도착지 — "이 메뉴를 저 자리로". 주문번호 옆에 두는 것은, 카운터와
+   주방이 티켓에서 제일 먼저 찾는 값이기 때문입니다. 없으면 아무것도
+   그리지 않습니다: 테이블이 아닌 주문(포장·배달)이 빈 칸으로 보이면
+   "누락"처럼 읽힙니다. */
+.table-tag {
+  font-size: 13px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(91, 140, 255, 0.16);
+  color: #8fb0ff;
+  border: 1px solid rgba(91, 140, 255, 0.35);
+  white-space: nowrap;
+}
+
+/* 수령 대기 — 조리는 끝났고 아직 아무도 안 가져간 주문.
+   조리 대기와 색을 다르게 둡니다: 주방이 지금 해야 할 일이 "만드는 것"인지
+   "내주는 것"인지가 한눈에 갈려야 합니다. */
+.card.ready { border-color: rgba(62, 207, 142, 0.35); }
+
+/* 수령 확인 창.
+   전체 화면을 덮는 이유: 손님이 앞에 서 있는 순간이라, 뒤의 티켓을 실수로
+   누르면 안 됩니다. 확인이 끝나면 바로 사라집니다. */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 10;
+}
+
+.sheet {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 22px;
+}
+.sheet h3 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
+.sheet .muted { margin: 0 0 10px; }
+.sheet .row { margin-top: 16px; }
+
+/* 네 자리를 한눈에 대조할 수 있게 크고 넓게. 직원이 화면과 손님의 말을
+   번갈아 보는 순간이라, 작으면 잘못 읽습니다. */
+/* 티켓 본문 — 만들 것들.
+   주방은 이 줄들만 보고 움직입니다. 그래서 금액도 메뉴 코드도 안
+   그립니다: 만드는 데 필요 없는 값이 섞이면 필요한 값이 늦게 읽힙니다. */
+.ticket-lines { list-style: none; margin: 0; padding: 0; }
+.ticket-lines li {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0;
+  font-size: 17px; font-weight: 600;
+}
+.ticket-menu { flex: 1; min-width: 0; }
+/* 수량은 눈에 띄어야 합니다 — 세 그릇을 한 그릇으로 만드는 사고가
+   제일 흔합니다. */
+.ticket-qty {
+  font-size: 15px; font-weight: 800; color: var(--accent);
+  background: var(--panel-2); border-radius: 6px; padding: 1px 7px;
+}
+
+/* 메인이 보는 줄 — 어느 주방 것이고 끝났는가. */
+.ticket-kitchen {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+}
+.ticket-mark { font-size: 11.5px; font-weight: 700; color: var(--muted); min-width: 28px; text-align: right; }
+.ticket-lines li.done .ticket-menu { color: var(--muted); text-decoration: line-through; }
+.ticket-lines li.done .ticket-mark { color: var(--up); }
+.ticket-lines li.cooking .ticket-mark { color: var(--warn); }
+
+/* 내 것은 끝났는데 옆 주방을 기다리는 중.
+   조리완료 버튼을 그대로 두면 주방은 눌러도 아무 일이 안 일어나는 것을
+   보고 고장인 줄 압니다. */
+.waiting-others {
+  margin-top: 8px; padding: 9px 11px; border-radius: 8px;
+  background: var(--panel-2); border: 1px dashed var(--border);
+  font-size: 13px; color: var(--muted);
+}
+
+/* 단말 등록에서 하는 일 고르기 */
+.role-pick { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.role-pick label {
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-2);
+}
+.role-pick label.picked { border-color: var(--accent); }
+.role-pick strong { display: block; font-size: 14.5px; }
+.role-pick em { display: block; font-style: normal; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+.pin-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-align: center;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.pin-input:focus { outline: none; border-color: var(--accent); }
+
+/* 강제 진행.
+   내주기 버튼과 **같은 줄에 두지 않습니다**. 나란히 있으면 둘 중
+   가까운 쪽을 누르게 되고, 바쁜 시간에는 그게 늘 강제 진행입니다 —
+   그러면 수령번호가 하루 만에 장식이 됩니다.
+
+   색도 초록(내주기)이나 빨강(취소/위험)이 아닙니다. 이건 사고가
+   아니라 **덜 좋은 길**이고, 매장이 죄책감을 느껴야 할 동작도
+   아닙니다. 눈에 띄되 손이 먼저 가지는 않을 정도. */
+/* 다시 부르기.
+   수령 확인 옆에 나란히 둡니다 — 강제 진행과 달리 이건 **덜 좋은
+   길이 아니라 그냥 다른 일**이고, 손님을 세워 둔 채 누르는 버튼이라
+   손이 가까워야 합니다. 색은 중립: 잘못 눌러도 아무 일도 안 일어납니다. */
+.btn.recall { color: var(--text); }
+
+.force-row {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.force-row .muted { font-size: 13px; flex: 1; min-width: 180px; }
+.btn.force {
+  color: var(--warn, #ffb020);
+  border-color: rgba(255, 176, 32, 0.35);
+  background: rgba(255, 176, 32, 0.08);
+}
+.btn.force:hover:not(:disabled) { background: rgba(255, 176, 32, 0.16); }
+
+/* 조리 중 — 이 주방이 집은 주문.
+   조리 대기(테두리 기본)와 수령 대기(초록)의 가운데입니다. 색이 셋이면
+   주방이 화면을 읽지 않고 훑기만 해도 어느 칸이 자기 일인지 압니다. */
+.card.cooking { border-color: rgba(255, 176, 32, 0.45); }
+
+/* 라벨 다시 (store-app.md §7.3) */
+.label-list { list-style: none; padding: 0; margin: 8px 0 16px; display: grid; gap: 8px; }
+.label-list li { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
