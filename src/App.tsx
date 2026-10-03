@@ -62,7 +62,7 @@ function TicketBody({ order, deviceId, isMain }:
   return (
     <ul className="ticket-lines">
       {shown.map((line) => (
-        <li key={line.seq} className={line.producedAt ? 'done' : undefined}>
+        <li key={line.seq} className={line.producedAt ? 'done' : isMain && line.startedAt ? 'cooking' : undefined}>
           <span className="ticket-menu">{line.menuName}</span>
           {line.quantity > 1 && <span className="ticket-qty">×{line.quantity}</span>}
           {/* 메인은 어느 주방 것인지와 끝났는지를 함께 봅니다 — 그게
@@ -70,7 +70,12 @@ function TicketBody({ order, deviceId, isMain }:
           {isMain && line.kdsDeviceId && (
             <span className="ticket-kitchen">{line.kdsDeviceId}</span>
           )}
-          {isMain && <span className="ticket-mark">{line.producedAt ? '완료' : '대기'}</span>}
+          {/* 생산 주방이 가져간 줄은 "조리 중" — 대기와 섞이면 메인이 누구를 기다리는지 모릅니다. */}
+          {isMain && (
+            <span className="ticket-mark">
+              {line.producedAt ? '완료' : line.startedAt ? '조리 중' : '대기'}
+            </span>
+          )}
         </li>
       ))}
     </ul>

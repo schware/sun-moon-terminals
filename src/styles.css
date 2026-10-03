@@ -215,6 +215,7 @@ footer {
 .ticket-mark { font-size: 11.5px; font-weight: 700; color: var(--muted); min-width: 28px; text-align: right; }
 .ticket-lines li.done .ticket-menu { color: var(--muted); text-decoration: line-through; }
 .ticket-lines li.done .ticket-mark { color: var(--up); }
+.ticket-lines li.cooking .ticket-mark { color: var(--warn); }
 
 /* 내 것은 끝났는데 옆 주방을 기다리는 중.
    조리완료 버튼을 그대로 두면 주방은 눌러도 아무 일이 안 일어나는 것을
