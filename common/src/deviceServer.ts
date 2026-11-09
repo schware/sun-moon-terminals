@@ -14,7 +14,7 @@ import { shellServerUrl } from './shell'
 // 되는 빌드를 조용히 만들었습니다 — 밖에서는 화면은 뜨는데 Device Server 에 못 닿았습니다.
 // 셸(Electron) 안이면 셸에 설정된 서버 주소가 먼저입니다 (store-app.md §5.2). DID 는 셸에서 돌지
 // 않아서 늘 뒤의 두 값입니다.
-export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://61.73.134.2:8087'
+export const BASE = shellServerUrl() ?? import.meta.env.VITE_DEVICE_SERVER ?? 'http://sunmoonwork.duckdns.org:8087'
 
 export type OrderStatus =
   | 'PLACED'
